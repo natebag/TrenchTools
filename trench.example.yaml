@@ -1,0 +1,33 @@
+# TrenchSniper OS Configuration
+# Copy this file to trench.yaml and fill in your values
+
+rpc:
+  mainnet: "https://api.mainnet-beta.solana.com"
+  # Use a premium RPC for better performance:
+  # mainnet: "https://your-helius-rpc.com"
+  # mainnet: "https://your-quicknode-rpc.com"
+  devnet: "https://api.devnet.solana.com"
+
+# Jito MEV protection settings (optional)
+jito:
+  blockEngine: "https://mainnet.block-engine.jito.wtf"
+  tip: 10000  # Tip in lamports (10000 = 0.00001 SOL)
+
+wallets:
+  # Your main wallet - can be:
+  # - Base64 encoded secret key
+  # - JSON array of bytes
+  # - Path to keypair.json file
+  main: "/path/to/keypair.json"
+  
+  # Additional wallets for multi-wallet sniping
+  # Each wallet will buy with the specified amount
+  snipe:
+    - "/path/to/wallet1.json"
+    - "/path/to/wallet2.json"
+    - "/path/to/wallet3.json"
+
+defaults:
+  slippageBps: 100      # 1% slippage (100 basis points)
+  priorityFee: 5000     # Priority fee in lamports
+  network: mainnet      # mainnet or devnet
