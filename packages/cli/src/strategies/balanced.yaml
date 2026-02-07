@@ -1,0 +1,76 @@
+# TrenchSniper OS - Balanced Strategy
+# Middle ground between aggressive and conservative
+
+name: balanced
+description: Balanced approach with moderate risk/reward
+
+# Entry conditions
+entry:
+  # Maximum market cap in SOL to enter
+  maxMarketCapSol: 100
+  # Minimum liquidity in SOL
+  minLiquiditySol: 5
+  # Maximum slippage tolerance (basis points)
+  maxSlippageBps: 300
+  # Don't restrict to new tokens only
+  newTokensOnly: false
+  newTokenWindowSec: 0
+
+# Position sizing
+position:
+  # Fixed buy amount in SOL
+  buyAmountSol: 0.25
+  # Maximum position per token (in SOL value)
+  maxPositionSol: 1
+  # Maximum concurrent positions
+  maxPositions: 7
+
+# Priority fees (in microlamports)
+priority:
+  level: high
+  computeUnits: 175000
+  priorityFee: 200000
+  jitoTip: 5000
+
+# Auto-sell configuration
+autoSell:
+  enabled: true
+  # Take profit multiplier (1.75x = 75% gain)
+  takeProfitMultiplier: 1.75
+  # Stop loss percentage (0.4 = 40% loss)
+  stopLossPercent: 0.4
+  # Trailing stop
+  trailingStop:
+    enabled: true
+    activationMultiplier: 1.4
+    trailPercent: 0.18
+
+# DEX routing
+routing:
+  # Preferred DEX order
+  preferredDexes:
+    - pumpfun
+    - raydium
+    - meteora
+  # Auto-detect migration and switch
+  autoMigration: true
+  # Use Jito when available
+  jitoEnabled: true
+
+# Risk management
+risk:
+  # Maximum price impact allowed
+  maxPriceImpactPct: 7
+  # Skip tokens with honeypot indicators
+  honeypotCheck: true
+  # Minimum holder count
+  minHolders: 25
+  # Skip if creator sold more than X%
+  maxCreatorSoldPct: 75
+
+# Monitoring
+monitoring:
+  # Check interval in milliseconds
+  priceCheckIntervalMs: 2500
+  # Quote refresh interval
+  quoteRefreshMs: 7500

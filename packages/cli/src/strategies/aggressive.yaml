@@ -1,0 +1,76 @@
+# TrenchSniper OS - Aggressive Strategy
+# High risk, high reward - for experienced traders
+
+name: aggressive
+description: Fast entry, tight stops, maximum speed
+
+# Entry conditions
+entry:
+  # Maximum market cap in SOL to enter
+  maxMarketCapSol: 50
+  # Minimum liquidity in SOL
+  minLiquiditySol: 1
+  # Maximum slippage tolerance (basis points)
+  maxSlippageBps: 500
+  # Only snipe new tokens (first 60 seconds)
+  newTokensOnly: true
+  newTokenWindowSec: 60
+
+# Position sizing
+position:
+  # Fixed buy amount in SOL
+  buyAmountSol: 0.5
+  # Maximum position per token (in SOL value)
+  maxPositionSol: 2
+  # Maximum concurrent positions
+  maxPositions: 10
+
+# Priority fees (in microlamports)
+priority:
+  level: ultra
+  computeUnits: 200000
+  priorityFee: 1000000
+  jitoTip: 10000
+
+# Auto-sell configuration
+autoSell:
+  enabled: true
+  # Take profit multiplier (2x = 100% gain)
+  takeProfitMultiplier: 2.0
+  # Stop loss percentage (0.5 = 50% loss)
+  stopLossPercent: 0.5
+  # Trailing stop (activate after X profit)
+  trailingStop:
+    enabled: true
+    activationMultiplier: 1.5
+    trailPercent: 0.2
+
+# DEX routing
+routing:
+  # Preferred DEX order
+  preferredDexes:
+    - pumpfun
+    - raydium
+    - meteora
+  # Auto-detect migration and switch
+  autoMigration: true
+  # Use Jito bundles for speed
+  jitoEnabled: true
+
+# Risk management
+risk:
+  # Maximum price impact allowed
+  maxPriceImpactPct: 10
+  # Skip tokens with honeypot indicators
+  honeypotCheck: true
+  # Minimum holder count
+  minHolders: 0
+  # Skip if creator sold more than X%
+  maxCreatorSoldPct: 100
+
+# Monitoring
+monitoring:
+  # Check interval in milliseconds
+  priceCheckIntervalMs: 1000
+  # Quote refresh interval
+  quoteRefreshMs: 5000

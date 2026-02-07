@@ -1,0 +1,76 @@
+# TrenchSniper OS - Conservative Strategy
+# Lower risk approach with stricter filters
+
+name: conservative
+description: Safety first, strict filters, patient entries
+
+# Entry conditions
+entry:
+  # Maximum market cap in SOL to enter
+  maxMarketCapSol: 200
+  # Minimum liquidity in SOL (higher requirement)
+  minLiquiditySol: 10
+  # Maximum slippage tolerance (basis points)
+  maxSlippageBps: 200
+  # Don't require new tokens only
+  newTokensOnly: false
+  newTokenWindowSec: 0
+
+# Position sizing
+position:
+  # Fixed buy amount in SOL (smaller positions)
+  buyAmountSol: 0.1
+  # Maximum position per token (in SOL value)
+  maxPositionSol: 0.5
+  # Maximum concurrent positions
+  maxPositions: 5
+
+# Priority fees (in microlamports)
+priority:
+  level: medium
+  computeUnits: 150000
+  priorityFee: 50000
+  jitoTip: 0
+
+# Auto-sell configuration
+autoSell:
+  enabled: true
+  # Take profit multiplier (1.5x = 50% gain)
+  takeProfitMultiplier: 1.5
+  # Stop loss percentage (0.3 = 30% loss)
+  stopLossPercent: 0.3
+  # Trailing stop
+  trailingStop:
+    enabled: true
+    activationMultiplier: 1.3
+    trailPercent: 0.15
+
+# DEX routing
+routing:
+  # Preferred DEX order (prefer Raydium for stability)
+  preferredDexes:
+    - raydium
+    - meteora
+    - pumpfun
+  # Auto-detect migration and switch
+  autoMigration: true
+  # Skip Jito for cost savings
+  jitoEnabled: false
+
+# Risk management (stricter)
+risk:
+  # Maximum price impact allowed
+  maxPriceImpactPct: 5
+  # Skip tokens with honeypot indicators
+  honeypotCheck: true
+  # Minimum holder count (wait for adoption)
+  minHolders: 50
+  # Skip if creator sold more than X%
+  maxCreatorSoldPct: 50
+
+# Monitoring
+monitoring:
+  # Check interval in milliseconds (less frequent)
+  priceCheckIntervalMs: 5000
+  # Quote refresh interval
+  quoteRefreshMs: 10000
