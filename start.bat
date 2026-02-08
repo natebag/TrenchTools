@@ -1,41 +1,84 @@
 @echo off
-echo 🔥 TrenchSniper OS - Quick Start
-echo =================================
+chcp 65001 >nul
+title TrenchSniper OS - Launch Dashboard
+
+echo 🔥 TrenchSniper OS v0.3.0
+echo ============================
 echo.
-echo Step 1: Install dependencies
-call pnpm install
+
+:: Check Node.js
+node --version >nul 2>&1
 if errorlevel 1 (
-    echo ❌ Install failed. Make sure Node.js is installed.
+    echo ❌ Node.js not found! Install from https://nodejs.org/
     pause
     exit /b 1
 )
-echo ✅ Dependencies installed
+echo ✅ Node.js found
+
+:: Check pnpm
+pnpm --version >nul 2>&1
+if errorlevel 1 (
+    echo 📦 Installing pnpm...
+    npm install -g pnpm
+)
+echo ✅ pnpm ready
+
+:: Install root dependencies
 echo.
-echo Step 2: Copy env template
-copy /Y .env.example .env.local >nul 2>&1
-echo ✅ Environment file created
+echo 📦 Installing dependencies...
+call pnpm install
+if errorlevel 1 goto error
+
+:: Build all packages
 echo.
-echo ⚠️  EDIT .env.local with your wallet mnemonic!
-echo     Right-click .env.local -^> Open with Notepad
+echo 🔨 Building packages...
+call pnpm build
+if errorlevel 1 goto error
+
+:: Install UI dependencies
 echo.
-echo     Required for devnet:
-echo     - SOLANA_RPC_URL=https://api.devnet.solana.com
+echo 📦 Setting up Web UI...
+cd packages\ui
+call pnpm install
+if errorlevel 1 goto error
+cd ..\..
+
 echo.
-echo     Required for mainnet:
-echo     - SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
-echo     - WALLET_MNEMONIC=your phrase here
+echo ✅ All systems ready!
 echo.
-set /p editnow="Open .env.local now? (y/n): "
-if /i "%editnow%"=="y" notepad .env.local
+echo ==========================================
+echo 🌐 STARTING WEB UI DASHBOARD
+echo ==========================================
 echo.
-echo Step 3: Get devnet SOL (FREE)
-echo     Visit: https://faucet.solana.com/
-echo     Paste your wallet address
+echo The dashboard will open at: http://localhost:5173
 echo.
-echo Step 4: Build
-echo     pnpm build
+echo Available views:
+echo   💰 /treasury   - Main wallet funding
+echo   👛 /wallets    - Wallet management  
+echo   🎯 /snipe      - Sniper control
+echo   🛡️ /shield      - Honeypot scanner
+echo   📊 /pnl         - P
+echo   👻 /activity    - Fake tx generator
+echo   ⚙️ /settings    - Configuration
 echo.
-echo Step 5: Test
-echo     pnpm sniper --dry-run
+echo ==========================================
+echo.
+
+:: Start the dev server
+cd packages\ui
+call pnpm dev
+
+:: If server exits, keep window open
+echo.
+echo ⚠️ Server stopped
 echo.
 pause
+exit /b 0
+
+:error
+echo.
+echo ❌ Something went wrong!
+echo Check the errors above
+echo.
+pause
+exit /b 1
