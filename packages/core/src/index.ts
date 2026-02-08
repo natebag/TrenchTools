@@ -26,10 +26,16 @@ export * from './shield/index.js';
 export * from './revenue/index.js';
 
 // Supply - Token burning
-export * from './supply/burn.js';
+export * from './supply/index.js';
 
 // Marketing - DexScreener, promotion
 export * from './marketing/index.js';
+
+// Activity - Wallet activity generator
+export * from './activity/index.js';
+
+// Liquidity - LP token locking
+export * from './liquidity/index.js';
 
 // Re-export wallet types
 export * from './wallet/types.js';
