@@ -5,6 +5,7 @@
 
 // Wallet functionality
 export * from './wallet/index.js';
+export * from './wallet/withdraw.js';
 
 // Trading types
 export * from './trading/index.js';
@@ -23,3 +24,12 @@ export * from './shield/index.js';
 
 // Revenue - Creator fees, transfers, buyback
 export * from './revenue/index.js';
+
+// Supply - Token burning
+export * from './supply/burn.js';
+
+// Marketing - DexScreener, promotion
+export * from './marketing/index.js';
+
+// Re-export wallet types
+export * from './wallet/types.js';
