@@ -1,0 +1,35 @@
+TRENCHSNIPER OS - MANUAL START (if .bat fails)
+===========================================
+
+OPTION 1: VS Code (Easiest)
+----------------------------
+1. Open VS Code
+2. File -> Open Folder -> C:\Users\SCICO\.openclaw\workspace\TrenchSniper-OS
+3. Terminal -> New Terminal (or press Ctrl+`)
+4. Type: cd packages\ui
+5. Type: pnpm install
+6. Type: pnpm dev
+7. Browser opens to http://localhost:5173
+
+OPTION 2: PowerShell
+---------------------
+1. Press Win + X, select PowerShell
+2. Type:
+   cd "C:\Users\SCICO\.openclaw\workspace\TrenchSniper-OS\packages\ui"
+   pnpm install
+   pnpm dev
+3. Wait for browser to open
+
+OPTION 3: Check Error Log
+--------------------------
+Run: launch-dashboard.bat
+Errors saved to: launch.log
+Read the log to see what went wrong.
+
+COMMON FIXES:
+--------------
+- Node.js not installed? Download from https://nodejs.org/
+- pnpm not found? Run: npm install -g pnpm
+- Port 5173 in use? Kill other apps or change port in vite.config.ts
+
+HAPPY SNIPING! 🎯
