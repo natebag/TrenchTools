@@ -37,6 +37,24 @@ All notable changes to TrenchSniper OS.
 - **Portfolio Reports** - Full portfolio P&L snapshot
 - **Calculators** - Realized + unrealized gain computation
 
+### 🛡️ Shield - Honeypot Detection
+
+- **Mint Authority Check** - Detect if dev can mint more tokens
+- **Freeze Authority Check** - Detect if wallets can be frozen
+- **Fee Analysis** - High sell fees (>10%), extreme fees (>25% = honeypot)
+- **Sell Disabled Detection** - Can't sell = honeypot
+- **Liquidity Check** - Locked liquidity verification
+- **Dev Holdings Analysis** - Excessive dev and whale concentration risks
+- **Safety Score** - 0-100 risk rating
+- **Actionable Alerts** - Telegram-friendly formatted reports
+
+### 💰 Revenue Features
+
+- **Claim Creator Fees** - Collect bonding curve migration fees
+- **Token Transfers** - Single recipient and batch airdrop support
+- **Buyback Engine** - Treasury token purchases with DCA scheduling
+- **Budget Control** - Price limits, slippage protection, time windows
+
 ---
 
 ## [0.1.0] - 2026-02-07
