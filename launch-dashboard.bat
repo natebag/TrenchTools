@@ -1,5 +1,5 @@
 @echo off
-cd /d "C:\Users\SCICO\.openclaw\workspace\TrenchSniper-OS"
+cd /d "F:\coding\TrenchSniper-OS"
 >launch.log 2>&1 (
   echo =========================================
   echo TrenchSniper Dashboard Launcher
@@ -22,13 +22,13 @@ cd /d "C:\Users\SCICO\.openclaw\workspace\TrenchSniper-OS"
   
   echo [%date% %time%] Step 3: Root install...
   if not exist "node_modules" (
-    pnpm install
+    echo | set /p="Y" | pnpm install
   )
   
   echo [%date% %time%] Step 4: UI install...
   cd packages\ui
   if not exist "node_modules" (
-    pnpm install
+    echo | set /p="Y" | pnpm install
   )
   
   echo [%date% %time%] Step 5: Launch UI...
@@ -49,7 +49,7 @@ if exist launch.log (
   type launch.log
   echo.
   echo ^^^^^^^^^^^^^^^^^^ CHECK ABOVE FOR ERRORS ^^^^^^^^^^^^^^^^^^
-  echo Log saved to: C:\Users\SCICO\.openclaw\workspace\TrenchSniper-OS\launch.log
+  echo Log saved to: F:\coding\TrenchSniper-OS\launch.log
 )
 
 pause

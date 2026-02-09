@@ -98,7 +98,31 @@ export * from './activity/index.js';
 export * from './liquidity/index.js';
 
 // Treasury - Main wallet funding
-export * from './treasury/index.js';
+export {
+  getTreasuryStatus,
+  distributeFunds,
+  autoFund,
+  getSolBalance,
+  getTokenBalances,
+  getWalletBalance,
+  subscribeToBalance,
+  subscribeToTreasury,
+  formatSolBalance,
+  formatTokenBalance,
+  formatTreasuryStatus,
+  formatDistributionResult,
+  getTreasuryQR,
+  invalidateCache,
+  invalidateAllCache,
+} from './treasury/index.js';
+export type {
+  TreasuryConfig,
+  TreasuryStatus,
+  WalletBalance,
+  DistributionResult,
+  BalanceSubscription,
+  TokenBalance as TreasuryTokenBalance,
+} from './treasury/index.js';
 
 // Logger
 export { logger } from './logger.js';

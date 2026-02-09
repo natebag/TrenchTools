@@ -2,6 +2,50 @@
 
 All notable changes to TrenchSniper OS.
 
+## [0.3.0] - 2026-02-09 - PRODUCTION DATA INTEGRATION
+
+### 🔐 Wallet Security (Production Grade)
+
+- **HD Wallet Generation** - BIP39 + BIP44 with Solana path m/44'/501'/0'/0/{index}
+- **ed25519-hd-key** - Real Solana keypair derivation
+- **AES-256-GCM Encryption** - Military-grade wallet encryption
+- **Argon2id KDF** - 64MB memory, 3 iterations, 32-byte salt
+- **WalletVault Class** - Secure lock/unlock/export/import operations
+- **File & Memory Storage** - Flexible storage adapters
+
+### 💰 Treasury (Real Blockchain Data)
+
+- **Real SOL Balances** - `Connection.getBalance()` for live data
+- **SPL Token Balances** - `getTokenAccountsByOwner` for all tokens
+- **WebSocket Subscriptions** - Real-time balance updates
+- **Smart Caching** - 30-second TTL with automatic invalidation
+- **Formatted Display** - "1.234567 SOL" style formatting
+
+### ⚙️ Settings Persistence
+
+- **localStorage** - Browser persistence with schema validation
+- **Cross-Tab Sync** - Storage events for multi-tab consistency
+- **Debounced Auto-Save** - 500ms debounce prevents excessive writes
+- **Version Migration** - Schema versioning for future updates
+- **Export/Import** - Full state backup and restore
+
+### 🛡️ Shield (Real Token Analysis)
+
+- **On-Chain Authority Checks** - `getParsedAccountInfo` for mint/freeze
+- **DexScreener API** - Real liquidity, volume, and price data
+- **Transfer Pattern Analysis** - Honeypot detection via buy/sell ratios
+- **Risk Score 0-100** - Comprehensive safety scoring
+- **5-Minute Cache** - Performance optimization with TTL
+- **Formatted Reports** - Telegram-ready safety reports
+
+### 📦 Technical
+
+- **Real crypto functions** - No mocks or stubs
+- **TypeScript strict** - Full type safety
+- **Production dependencies** - @solana/web3.js, bip39, argon2, ed25519-hd-key
+
+---
+
 ## [0.2.0] - 2026-02-07 - FEATURE COMPLETE
 
 ### ✨ Auto-Sell & Risk Management

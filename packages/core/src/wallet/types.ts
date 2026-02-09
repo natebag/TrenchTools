@@ -57,6 +57,7 @@ export interface WalletExport {
     timeCost: number;
     parallelism: number;
   };
+  salt?: string;
   iv?: string;
   tag?: string;
 }
