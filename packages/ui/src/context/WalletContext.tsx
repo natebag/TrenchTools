@@ -79,6 +79,40 @@ function validateActivityLog(a: unknown): a is ActivityLog {
 
 // ============ Storage Functions ============
 
+function loadArrayFromStorage<T>(
+  key: string,
+  validator: (data: unknown) => data is T,
+  defaultValue: T[]
+): T[] {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return defaultValue;
+
+    const parsed: StorageSchema<T[]> = JSON.parse(raw);
+    
+    // Version check
+    if (parsed.version !== STORAGE_VERSION) {
+      console.warn(`Storage version mismatch for ${key}, using defaults`);
+      return defaultValue;
+    }
+
+    // Validate array data
+    if (Array.isArray(parsed.data)) {
+      const validated = parsed.data.filter(validator);
+      if (validated.length !== parsed.data.length) {
+        console.warn(`Some ${key} entries failed validation`);
+      }
+      return validated;
+    }
+
+    console.warn(`Invalid ${key} data (expected array), using defaults`);
+    return defaultValue;
+  } catch (error) {
+    console.error(`Failed to load ${key}:`, error);
+    return defaultValue;
+  }
+}
+
 function loadFromStorage<T>(
   key: string,
   validator: (data: unknown) => data is T,
@@ -94,15 +128,6 @@ function loadFromStorage<T>(
     if (parsed.version !== STORAGE_VERSION) {
       console.warn(`Storage version mismatch for ${key}, using defaults`);
       return defaultValue;
-    }
-
-    // Validate data
-    if (Array.isArray(parsed.data)) {
-      const validated = parsed.data.filter(validator);
-      if (validated.length !== parsed.data.length) {
-        console.warn(`Some ${key} entries failed validation`);
-      }
-      return validated as unknown as T;
     }
 
     if (validator(parsed.data)) {
@@ -201,7 +226,7 @@ const WalletContext = createContext<WalletContextType | undefined>(undefined);
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   // Load initial state from localStorage
   const [wallets, setWallets] = useState<Wallet[]>(() =>
-    loadFromStorage(STORAGE_KEYS.wallets, validateWallet, defaultWallets)
+    loadArrayFromStorage(STORAGE_KEYS.wallets, validateWallet, defaultWallets)
   );
 
   const [sniperConfig, setSniperConfig] = useState<SniperConfig>(() =>
@@ -213,16 +238,16 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   );
 
   const [activity, setActivity] = useState<ActivityLog[]>(() => {
-    const loaded = loadFromStorage(STORAGE_KEYS.activity, validateActivityLog, []);
+    const loaded = loadArrayFromStorage(STORAGE_KEYS.activity, validateActivityLog, []);
     // Convert date strings back to Date objects
-    return (loaded as ActivityLog[]).map(a => ({
+    return loaded.map(a => ({
       ...a,
       timestamp: new Date(a.timestamp),
     }));
   });
 
   const [treasury, setTreasury] = useState<TreasuryState>(defaultTreasury);
-  const [loading, setLoading] = useState(false);
+  const [_loading, _setLoading] = useState(false);
 
   // Debounce timers
   const saveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -450,7 +475,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     sniperConfig,
     settings,
     activity,
-    loading,
+    loading: _loading,
     addWallet,
     removeWallet,
     updateWallet,
