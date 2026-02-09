@@ -3,5 +3,7 @@
  * Telegram Bot for TrenchSniper OS
  */
 export { TrenchBot, createBot } from './bot.js';
-export { AlertManager, AlertData, AlertType } from './alerts.js';
-export { getConfig, BotConfig } from './config.js';
+export { AlertManager } from './alerts.js';
+export type { AlertData, AlertType } from './alerts.js';
+export { getConfig } from './config.js';
+export type { BotConfig } from './config.js';

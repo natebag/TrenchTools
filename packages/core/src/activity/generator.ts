@@ -10,39 +10,7 @@ import {
   sendAndConfirmTransaction,
   LAMPORTS_PER_SOL,
 } from '@solana/web3.js';
-
-export interface ActivityConfig {
-  walletCount: number;
-  txCount: number;
-  solRange: [number, number]; // Min/max SOL per tx
-  timeRangeDays: number; // Spread over X days
-  includeSwaps?: boolean; // Simulate token swaps
-  includeSplTransfers?: boolean; // SPL token transfers
-  randomizeOrder?: boolean;
-}
-
-export interface ActivityPlan {
-  wallets: string[];
-  transactions: PlannedTx[];
-  estimatedCost: number;
-  durationMinutes: number;
-}
-
-export interface PlannedTx {
-  from: string;
-  to: string;
-  amount: number;
-  timestamp: number;
-  type: 'sol_transfer' | 'spl_transfer' | 'swap';
-}
-
-export interface ActivityResult {
-  success: boolean;
-  txCount: number;
-  signatures: string[];
-  cost: number;
-  errors: string[];
-}
+import type { ActivityConfig, ActivityPlan, ActivityResult, PlannedTx } from './types.js';
 
 /**
  * Generate activity plan (dry run)

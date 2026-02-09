@@ -3,7 +3,7 @@
  * Claim bonding curve fees after migration
  */
 import { Connection, PublicKey, Transaction } from '@solana/web3.js';
-import { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, createTransferInstruction } from '@solana/spl-token';
+import { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction } from '@solana/spl-token';
 
 export interface FeeClaimConfig {
   creatorWallet: string;
@@ -80,7 +80,7 @@ export async function calculateClaimableFees(
 export async function claimCreatorFees(
   connection: Connection,
   config: FeeClaimConfig,
-  signTransaction: (tx: Transaction) => Promise<string> // Returns signed tx base64 or signature
+  _signTransaction: (tx: Transaction) => Promise<string> // Returns signed tx base64 or signature
 ): Promise<FeeClaimResult> {
   try {
     if (!config.migrated) {

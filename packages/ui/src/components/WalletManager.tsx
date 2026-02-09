@@ -10,7 +10,7 @@ interface WalletInfo {
 
 export function WalletManager() {
   const [showKeys, setShowKeys] = useState(false);
-  const [wallets, setWallets] = useState<WalletInfo[]>([
+  const [wallets] = useState<WalletInfo[]>([
     { name: 'Sniper 1', address: '8KjPmN...4Wx', balance: 0.05, encrypted: true },
     { name: 'Sniper 2', address: '9LmQoP...5Yz', balance: 0.03, encrypted: true },
     { name: 'Sniper 3', address: '1RsXzA...6Bc', balance: 0.07, encrypted: true },

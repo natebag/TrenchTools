@@ -1,7 +1,7 @@
 /**
  * Trading Types - Core trading primitives for TrenchSniper OS
  */
-import { PublicKey, Keypair, Transaction } from '@solana/web3.js';
+import { PublicKey, Keypair } from '@solana/web3.js';
 
 export type DEX = 'pumpfun' | 'raydium' | 'jupiter' | 'orca' | 'meteora';
 
@@ -191,8 +191,10 @@ export interface SnipeResult {
   success: boolean;
   signature?: string;
   tokenMint: string;
+  tokenSymbol?: string;
   amountIn: number;
   amountOut: number;
   error?: string;
   timestamp: number;
+  slot?: number;
 }

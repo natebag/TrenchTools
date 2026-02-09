@@ -6,8 +6,6 @@ import {
   Connection,
   Keypair,
   PublicKey,
-  Transaction,
-  TransactionInstruction,
   LAMPORTS_PER_SOL,
 } from '@solana/web3.js';
 import { getAssociatedTokenAddress, getAccount } from '@solana/spl-token';
@@ -76,17 +74,17 @@ export class TokenSniper {
   private connection: Connection;
   private wallets: Keypair[];
   private slippageBps: number;
-  private useJito: boolean;
-  private jitoTipLamports: number;
-  private jitoBlockEngine: string;
+  private _useJito: boolean;
+  private _jitoTipLamports: number;
+  private _jitoBlockEngine: string;
 
   constructor(config: SnipeConfig) {
     this.connection = config.connection;
     this.wallets = config.wallets;
     this.slippageBps = config.slippageBps ?? 100;
-    this.useJito = config.useJito ?? false;
-    this.jitoTipLamports = config.jitoTipLamports ?? 10000;
-    this.jitoBlockEngine = config.jitoBlockEngine ?? 'https://mainnet.block-engine.jito.wtf';
+    this._useJito = config.useJito ?? false;
+    this._jitoTipLamports = config.jitoTipLamports ?? 10000;
+    this._jitoBlockEngine = config.jitoBlockEngine ?? 'https://mainnet.block-engine.jito.wtf';
   }
 
   /**
@@ -120,7 +118,7 @@ export class TokenSniper {
     }
 
     // Import PumpFun client dynamically
-    const { PumpFunClient } = await import('@trenchsniper/core/snipe');
+    const { PumpFunClient } = await import('@trenchsniper/core');
     const client = new PumpFunClient(this.connection);
 
     // Check token status
@@ -154,7 +152,7 @@ export class TokenSniper {
     }
 
     // Execute buys
-    if (this.useJito) {
+    if (this._useJito) {
       return this.snipeWithJito(walletsToUse, tokenMint, amountLamports, effectiveSlippage, client);
     }
 
@@ -228,7 +226,7 @@ export class TokenSniper {
     }
 
     // Import PumpFun client
-    const { PumpFunClient } = await import('@trenchsniper/core/snipe');
+    const { PumpFunClient } = await import('@trenchsniper/core');
     const client = new PumpFunClient(this.connection);
 
     // Check token status

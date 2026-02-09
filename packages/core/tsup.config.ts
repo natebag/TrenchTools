@@ -4,8 +4,6 @@ export default defineConfig({
   entry: {
     index: 'src/index.ts',
     'wallet/index': 'src/wallet/index.ts',
-    'connection/index': 'src/connection/index.ts',
-    'config/index': 'src/config/index.ts',
   },
   format: ['esm'],
   dts: true,
