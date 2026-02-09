@@ -2,6 +2,47 @@
 
 All notable changes to TrenchSniper OS.
 
+## [0.3.1] - 2026-02-09 - BROWSER COMPATIBILITY FIX
+
+### 🔧 Vite Browser Polyfills
+
+Fixed critical browser compatibility issues preventing the UI from loading.
+
+#### Problem
+- `ed25519-hd-key` uses Node.js `util.debuglog` and `util.inspect`
+- `@noble/hashes/argon2` was importing as CommonJS causing `require is not defined`
+- Vite was externalizing Node modules instead of polyfilling them
+
+#### Solution - New Browser Stubs
+
+**`src/stubs/util.ts`** - Full util module stub:
+- `debuglog()` - Returns no-op function
+- `inspect()` - JSON.stringify fallback
+- `format()` - Printf-style formatting
+- `promisify()`, `inherits()`, `deprecate()`
+- `types` namespace for type checking
+
+**`src/stubs/argon2.ts`** - Argon2 stub:
+- Prevents CJS import errors
+- Throws helpful error if actually called (not needed for Solana ops)
+
+#### Vite Config Updates
+
+```typescript
+// Fixed aliases - use explicit strings, not regex
+{ find: 'util', replacement: './src/stubs/util.ts' },
+{ find: '@noble/hashes/argon2', replacement: './src/stubs/argon2.ts' },
+{ find: 'argon2', replacement: './src/stubs/argon2.ts' },
+```
+
+#### Result
+- ✅ UI loads without errors
+- ✅ No more white page
+- ✅ All navigation working
+- ✅ Wallet connection ready
+
+---
+
 ## [0.3.0] - 2026-02-09 - PRODUCTION DATA INTEGRATION
 
 ### 🔐 Wallet Security (Production Grade)

@@ -92,7 +92,7 @@ export async function uploadImage(
   filename: string = 'token.png'
 ): Promise<string> {
   const formData = new FormData();
-  const blob = new Blob([imageBuffer], { type: 'image/png' });
+  const blob = new Blob([new Uint8Array(imageBuffer)], { type: 'image/png' });
   formData.append('file', blob, filename);
 
   const response = await fetch(`${PUMP_FUN_API}/ipfs`, {
