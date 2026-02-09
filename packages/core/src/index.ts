@@ -127,6 +127,26 @@ export type {
 // Logger
 export { logger } from './logger.js';
 
+// ============ Browser-Compatible Crypto ============
+// Import from '@trenchsniper/core/browser' for browser environments
+// These exports are here for convenience but may cause issues with bundlers
+// that don't tree-shake properly - prefer direct import from /browser
+export {
+  type BrowserEncryptedData,
+  type BrowserWalletData,
+  type BrowserWalletExport,
+  BrowserCryptoError,
+  BrowserInvalidPasswordError,
+  BrowserDecryptionError,
+  encryptForBrowser,
+  decryptForBrowser,
+  encryptWalletsForBrowser,
+  decryptWalletsForBrowser,
+  generateWalletId,
+  isBrowserCryptoAvailable,
+  BrowserWalletVault,
+} from './browser/index.js';
+
 // ============ Marketchoomba Integration ============
 
 // Orchestrator - Bot management and market making

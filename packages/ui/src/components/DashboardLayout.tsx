@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 import { WalletProvider } from '@/context/WalletContext'
 import { TreasuryView } from './TreasuryView'
-import { WalletManager } from './WalletManager'
+import { WalletManagerBrowser } from './WalletManagerBrowser'
 import { SniperControl } from './SniperControl'
 import { ShieldScanner } from './ShieldScanner'
 import { PnLCharts } from './PnLCharts'
@@ -168,7 +168,7 @@ function AppContent() {
     
     switch (path) {
       case '/treasury': return <TreasuryView />
-      case '/wallets': return <WalletManager />
+      case '/wallets': return <WalletManagerBrowser />
       case '/snipe': return <SniperControl />
       case '/shield': return <ShieldScanner />
       case '/pnl': return <PnLCharts />
