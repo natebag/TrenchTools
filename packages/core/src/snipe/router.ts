@@ -10,7 +10,6 @@ import {
   QuoteParams,
   SwapResult,
   Pool,
-  DEX,
   NoRouteError,
   SwapTransactionError,
 } from '../trading/types.js';
@@ -136,9 +135,9 @@ export class SmartRouter {
   async detectPoolMigration(tokenMint: PublicKey): Promise<PoolMigrationResult> {
     try {
       // Check PumpFun status
-      const isOnPumpfun = this.config.pumpfunEnabled
-        ? await pumpfun.isOnPumpFun(this.connection, tokenMint)
-        : false;
+      if (this.config.pumpfunEnabled) {
+        await pumpfun.isOnPumpFun(this.connection, tokenMint);
+      }
 
       const hasMigratedFromPump = this.config.pumpfunEnabled
         ? await pumpfun.hasMigrated(this.connection, tokenMint)

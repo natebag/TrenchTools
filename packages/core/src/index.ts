@@ -8,16 +8,76 @@ export * from './wallet/index.js';
 export * from './wallet/withdraw.js';
 
 // Trading types
-export * from './trading/index.js';
+export type {
+  DEX,
+  TokenInfo,
+  QuoteParams,
+  QuoteRequestOptions,
+  SwapResult,
+  SwapParams,
+  Pool,
+  Quote,
+  RouteStep,
+  BondingCurveState,
+  MigrationEvent,
+  PriorityFeeLevel,
+  PriorityConfig,
+  TokenLaunch,
+  SnipeConfig,
+  SnipeResult,
+} from './trading/types.js';
+export {
+  NoRouteError,
+  APIError,
+  SwapTransactionError,
+  SlippageExceededError,
+  PRIORITY_FEES,
+} from './trading/types.js';
 
 // Snipe functionality
 export * from './snipe/index.js';
 
 // Sniper Guard (auto-sell, launch protection)
-export * from './sniper-guard/index.js';
+export { AutoSellEngine, SniperGuardManager } from './sniper-guard/index.js';
+export type {
+  PositionStatus,
+  TriggerType,
+  AutoSellConfig,
+  Position,
+  ExitRecord,
+  ActiveTrigger,
+  PriceUpdate,
+  SellOrder,
+  SellResult,
+  GuardEvent,
+  GuardStats,
+} from './sniper-guard/types.js';
+export {
+  DEFAULT_AUTOSELL_CONFIG,
+  TriggerAlreadyActiveError,
+  SellExecutionError,
+  PositionNotFoundError as SniperPositionNotFoundError,
+} from './sniper-guard/types.js';
 
 // P&L tracking
-export * from './pnl/index.js';
+export { PnLCalculator, PnLTracker } from './pnl/index.js';
+export type {
+  TradeSide,
+  TradeStatus,
+  Trade,
+  PositionPnL,
+  TokenPnL,
+  WalletPnL,
+  PnLReport,
+  DailyPnL,
+  PnLFilter,
+  PnLSummaryCard,
+} from './pnl/types.js';
+export {
+  TradeNotFoundError,
+  InvalidPnLFilterError,
+  PositionNotFoundError as PnLPositionNotFoundError,
+} from './pnl/types.js';
 
 // Shield - Honeypot detection
 export * from './shield/index.js';
@@ -40,5 +100,5 @@ export * from './liquidity/index.js';
 // Treasury - Main wallet funding
 export * from './treasury/index.js';
 
-// Re-export wallet types
-export * from './wallet/types.js';
+// Logger
+export { logger } from './logger.js';

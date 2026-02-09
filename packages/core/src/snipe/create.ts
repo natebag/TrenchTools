@@ -10,20 +10,20 @@ import {
   Transaction,
   TransactionInstruction,
   SystemProgram,
-  LAMPORTS_PER_SOL,
   ComputeBudgetProgram,
 } from '@solana/web3.js';
 import {
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
   getAssociatedTokenAddress,
-  createAssociatedTokenAccountInstruction,
-  createInitializeMint2Instruction,
-  MINT_SIZE,
-  getMinimumBalanceForRentExemptMint,
 } from '@solana/spl-token';
 
-import { PUMPFUN_PROGRAM_ID, PUMPFUN_FEE_ACCOUNT, PUMPFUN_TOKEN_DECIMALS } from './pumpfun.js';
+import { PUMPFUN_PROGRAM_ID } from './pumpfun.js';
+
+interface UploadResponse {
+  metadataUri?: string;
+  hash?: string;
+}
 
 // ============ Constants ============
 
@@ -104,8 +104,8 @@ export async function uploadImage(
     throw new MetadataUploadError(`Image upload failed: ${response.status}`);
   }
 
-  const data = await response.json();
-  return data.metadataUri || `${IPFS_GATEWAY}${data.hash}`;
+  const data = await response.json() as UploadResponse;
+  return data.metadataUri || `${IPFS_GATEWAY}${data.hash || ''}`;
 }
 
 /**
@@ -147,9 +147,9 @@ export async function uploadMetadata(
     throw new MetadataUploadError(`Metadata upload failed: ${response.status}`);
   }
 
-  const data = await response.json();
+  const data = await response.json() as UploadResponse;
   return {
-    uri: data.metadataUri,
+    uri: data.metadataUri || '',
     name: metadata.name,
     symbol: metadata.symbol,
   };
@@ -277,7 +277,7 @@ export class TokenCreator {
    * Create a new token on PumpFun
    */
   async createToken(params: CreateTokenParams): Promise<CreateTokenResult> {
-    const { wallet, metadata, initialBuyAmount, priorityFeeLamports } = params;
+    const { wallet, metadata, priorityFeeLamports } = params;
 
     // 1. Upload metadata to IPFS
     const uploadedMetadata = await uploadMetadata(metadata);
@@ -376,7 +376,4 @@ export async function createToken(
   return getDefaultCreator(connection).createToken(params);
 }
 
-/**
- * Upload metadata to IPFS without creating token
- */
-export { uploadMetadata, uploadImage };
+// uploadMetadata and uploadImage are already exported above

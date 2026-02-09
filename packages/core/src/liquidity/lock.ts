@@ -5,42 +5,7 @@
  * requires their SDK/program addresses.
  */
 
-export interface LockConfig {
-  lpTokenMint: string;
-  amount: bigint;
-  durationDays: number; // Lock duration
-  cliffDays?: number; // Initial cliff before vesting
-  owner: string; // Wallet that locked
-  target?: string; // Optional: who receives unlocked tokens
-}
-
-export interface LockState {
-  id: string; // Lock ID
-  lpTokenMint: string;
-  amount: bigint;
-  lockedAt: number;
-  unlockAt: number; // Full unlock
-  cliffAt?: number; // When unlocks start
-  released: bigint; // Already unlocked
-  owner: string;
-  target: string;
-  status: 'locked' | 'unlocking' | 'unlocked' | 'cancelled';
-  isCancelled: boolean;
-}
-
-export interface LockSchedule {
-  totalAmount: bigint;
-  unlocked: bigint;
-  locked: bigint;
-  nextUnlockAt?: number;
-  nextUnlockAmount?: bigint;
-}
-
-export interface EmergencyUnlock {
-  allowed: boolean;
-  penaltyPercent: number; // Percent taken as penalty
-  penaltyRecipient: string;
-}
+import type { LockConfig, LockState, LockSchedule, EmergencyUnlock } from './types.js';
 
 /**
  * Create a new lock
@@ -132,7 +97,6 @@ export function getLockStatus(lock: LockState): {
     Number((schedule.unlocked * BigInt(100)) / lock.amount) +
     Number((lock.released * BigInt(100)) / lock.amount);
 
-  const totalDuration = lock.unlockAt - lock.lockedAt;
   const remaining = lock.unlockAt - Date.now();
   const days = Math.floor(remaining / (24 * 60 * 60 * 1000));
   const hours = Math.floor((remaining % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));

@@ -9,9 +9,7 @@ import {
   PublicKey,
   Transaction,
   VersionedTransaction,
-  TransactionMessage,
   SystemProgram,
-  LAMPORTS_PER_SOL,
 } from '@solana/web3.js';
 import bs58 from 'bs58';
 
@@ -56,13 +54,13 @@ export interface BundleResult {
 export class JitoBundleBuilder {
   private blockEngineUrl: string;
   private tipLamports: number;
-  private authKeypair?: Keypair;
+  private _authKeypair?: Keypair;
   private transactions: BundleTransaction[] = [];
 
   constructor(config: JitoConfig) {
     this.blockEngineUrl = config.blockEngineUrl;
     this.tipLamports = config.tipLamports;
-    this.authKeypair = config.authKeypair;
+    this._authKeypair = config.authKeypair;
   }
 
   /**

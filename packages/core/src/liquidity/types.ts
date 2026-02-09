@@ -28,3 +28,9 @@ export interface LockSchedule {
   nextUnlockAt?: number;
   nextUnlockAmount?: bigint;
 }
+
+export interface EmergencyUnlock {
+  allowed: boolean;
+  penaltyPercent: number;
+  penaltyRecipient: string;
+}

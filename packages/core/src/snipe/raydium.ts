@@ -9,7 +9,6 @@ import {
   PublicKey,
   Transaction,
   TransactionInstruction,
-  SystemProgram,
   ComputeBudgetProgram,
 } from '@solana/web3.js';
 import {
@@ -18,7 +17,7 @@ import {
   createAssociatedTokenAccountInstruction,
 } from '@solana/spl-token';
 
-import { Quote, QuoteParams, SwapResult, Pool, DEX, NoRouteError, APIError } from '../trading/types.js';
+import { Quote, QuoteParams, SwapResult, Pool, NoRouteError, APIError } from '../trading/types.js';
 
 // ============ Constants ============
 

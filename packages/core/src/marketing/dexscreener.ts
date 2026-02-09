@@ -13,6 +13,12 @@
 const DEXSCREENER_API = 'https://api.dexscreener.com/latest';
 const DEXSCREENER_FRONTEND = 'https://dexscreener.com';
 
+interface DexScreenerApiResponse {
+  pairs?: TokenPair[];
+  schemaVersion?: string;
+  pair?: TokenPair;
+}
+
 export interface DexScreenerConfig {
   chainId: string; // 'solana'
   tokenAddress: string;
@@ -106,7 +112,7 @@ export async function checkListing(
       };
     }
 
-    const data = await response.json();
+    const data = await response.json() as DexScreenerApiResponse;
     const pairs: TokenPair[] = data.pairs || [];
 
     if (pairs.length === 0) {
@@ -154,10 +160,10 @@ export async function getTokenData(
     };
   }
 
-  const data = await response.json();
+  const data = await response.json() as DexScreenerApiResponse;
 
   return {
-    listed: data.pairs && data.pairs.length > 0,
+    listed: !!(data.pairs && data.pairs.length > 0),
     pairs: data.pairs || [],
     lastChecked: Date.now(),
   };
@@ -177,7 +183,7 @@ export async function getPairData(
 
     if (!response.ok) return null;
 
-    const data = await response.json();
+    const data = await response.json() as DexScreenerApiResponse;
     return data.pairs?.[0] || null;
   } catch {
     return null;
@@ -195,7 +201,7 @@ export async function searchPairs(query: string): Promise<TokenPair[]> {
 
     if (!response.ok) return [];
 
-    const data = await response.json();
+    const data = await response.json() as DexScreenerApiResponse;
     return data.pairs || [];
   } catch {
     return [];

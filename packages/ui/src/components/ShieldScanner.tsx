@@ -17,7 +17,7 @@ interface ScanResult {
 export function ShieldScanner() {
   const [tokenAddress, setTokenAddress] = useState('');
   const [scanning, setScanning] = useState(false);
-  const [result, setResult] = useState<ScanResult | null>({
+  const [result] = useState<ScanResult | null>({
     safe: false,
     score: 85,
     isHoneypot: false,

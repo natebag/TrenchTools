@@ -427,7 +427,7 @@ export class PumpFunClient {
   async buildSwapTransaction(
     params: PumpFunSwapParams
   ): Promise<Transaction> {
-    const { wallet, tokenMint, amountIn, minAmountOut, isBuying, priorityFeeLamports } = params;
+    const { wallet, tokenMint, amountIn, minAmountOut, isBuying, priorityFeeLamports: _priorityFeeLamports } = params;
     const transaction = new Transaction();
 
     const bondingCurve = this.getBondingCurveAddress(tokenMint);

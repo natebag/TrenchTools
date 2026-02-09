@@ -58,7 +58,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [sniperConfig, setSniperConfig] = useState<SniperConfig>(defaultSniperConfig)
   const [settings, setSettingsState] = useState<Settings>(defaultSettings)
   const [activity, setActivity] = useState<ActivityLog[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading] = useState(false)
 
   useEffect(() => {
     localStorage.setItem('trench_wallets', JSON.stringify(wallets))

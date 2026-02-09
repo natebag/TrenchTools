@@ -1,15 +1,20 @@
 /**
  * Shield Detector - Honeypot and rug detection
+ * TrenchSniper OS
  */
-import { Connection, PublicKey } from '@solana/web3.js';
-import {
+
+import type {
   ShieldCheck,
   RiskFlags,
   TokenSafetyScore,
+  SafetyScores,
+  RiskLevel,
+  RiskFinding,
+} from './types.js';
+import {
   HONEYPOT_THRESHOLD,
   WARNING_THRESHOLD,
   SAFE_THRESHOLD,
-  RISK_WEIGHTS,
 } from './types.js';
 
 export interface TokenAccountInfo {
@@ -22,315 +27,304 @@ export interface TokenAccountInfo {
 export interface MarketInfo {
   liquidityLocked: boolean;
   liquidityUsd: number;
-  devWalletHoldings: number; // % of total supply
-  topHolderPercent: number; // % held by top 10 wallets
+  devWalletHoldings: number;
+  topHolderPercent: number;
   burnAmount: bigint;
 }
 
 export interface FeeInfo {
-  buyFee: number; // %
-  sellFee: number; // %
-  transferFee: number; // %
+  buyFee: number;
+  sellFee: number;
+  transferFee: number;
   isSellDisabled: boolean;
   isTransferDisabled: boolean;
 }
 
 /**
  * Check token mint authority
- * Returns risk score 0-25
  */
-async function checkMintAuthority(
+function checkMintAuthority(
   tokenInfo: TokenAccountInfo
-): Promise<ShieldCheck> {
-  const flags: string[] = [];
+): ShieldCheck {
+  const flags: RiskFlags[] = [];
   let riskScore = 0;
 
   if (tokenInfo.mintAuthority === null) {
     return {
       pass: true,
       score: 0,
-      flags: ['mint_authority_revoked'],
+      flags: ['RENOUNCED' as RiskFlags],
     };
   }
 
-  riskScore += RISK_WEIGHTS.ONEPOINT;
-  flags.push('has_mint_authority');
+  flags.push('MINT_ENABLED');
+  riskScore = 25;
 
   return {
     pass: false,
     score: riskScore,
     flags,
-    details: {
-      mintAuthority: tokenInfo.mintAuthority,
-    },
   };
 }
 
 /**
  * Check freeze authority
- * Returns risk score 0-15
  */
-async function checkFreezeAuthority(
+function checkFreezeAuthority(
   tokenInfo: TokenAccountInfo
-): Promise<ShieldCheck> {
-  const flags: string[] = [];
+): ShieldCheck {
+  const flags: RiskFlags[] = [];
   let riskScore = 0;
 
   if (tokenInfo.freezeAuthority === null) {
     return {
       pass: true,
       score: 0,
-      flags: ['freeze_authority_revoked'],
+      flags: ['VERIFIED_SAFE' as RiskFlags],
     };
   }
 
-  riskScore += RISK_WEIGHTS.FREEZE;
-  flags.push('has_freeze_authority');
+  flags.push('FREEZE_ENABLED');
+  riskScore = 20;
 
   return {
     pass: false,
     score: riskScore,
     flags,
-    details: {
-      freezeAuthority: tokenInfo.freezeAuthority,
-    },
   };
 }
 
 /**
- * Check transfer/sell fees
- * Returns risk score 0-30
+ * Check fee structure for honeypot indicators
  */
-async function checkFees(feeInfo: FeeInfo): Promise<ShieldCheck> {
-  const flags: string[] = [];
+function checkFees(feeInfo: FeeInfo): ShieldCheck {
+  const flags: RiskFlags[] = [];
   let riskScore = 0;
 
   if (feeInfo.isSellDisabled) {
-    return {
-      pass: false,
-      score: RISK_WEIGHTS.HONEYPOT,
-      flags: ['sell_disabled'],
-      details: { reason: 'Cannot sell tokens' },
-    };
+    riskScore += 100;
+    flags.push('SELL_DISABLED');
   }
 
   if (feeInfo.sellFee > 25) {
-    riskScore += RISK_WEIGHTS.HONEYPOT;
-    flags.push('extreme_sell_fee');
+    riskScore += 50;
+    flags.push('HIGH_SELL_FEE');
   } else if (feeInfo.sellFee > 10) {
-    riskScore += RISK_WEIGHTS.SEVERE - 10;
-    flags.push('high_sell_fee');
+    riskScore += 20;
+    flags.push('HIGH_SELL_FEE');
   }
 
-  if (feeInfo.buyFee > 10) {
-    riskScore += RISK_WEIGHTS.MODERATE;
-    flags.push('high_buy_fee');
-  }
-
-  if (feeInfo.transferFee > 5) {
-    riskScore += RISK_WEIGHTS.SEVERE;
-    flags.push('high_transfer_fee');
-  }
-
-  if (feeInfo.buyFee !== feeInfo.sellFee) {
-    flags.push('asymmetric_fees');
+  if (feeInfo.buyFee > 25) {
+    riskScore += 30;
+    flags.push('HIGH_BUY_FEE');
+  } else if (feeInfo.buyFee > 10) {
+    riskScore += 15;
+    flags.push('HIGH_BUY_FEE');
   }
 
   return {
-    pass: riskScore < WARNING_THRESHOLD,
+    pass: riskScore < 30,
     score: riskScore,
     flags,
-    details: {
-      buyFee: feeInfo.buyFee,
-      sellFee: feeInfo.sellFee,
-      transferFee: feeInfo.transferFee,
-    },
   };
 }
 
 /**
- * Check liquidity status
- * Returns risk score 0-20
+ * Check liquidity info
  */
-async function checkLiquidity(marketInfo: MarketInfo): Promise<ShieldCheck> {
-  const flags: string[] = [];
+function checkLiquidity(marketInfo: MarketInfo): ShieldCheck {
+  const flags: RiskFlags[] = [];
   let riskScore = 0;
 
   if (!marketInfo.liquidityLocked) {
-    riskScore += RISK_WEIGHTS.HIGH;
-    flags.push('liquidity_unlocked');
+    riskScore += 15;
+    flags.push('UNLOCKED_LIQUIDITY');
   }
 
   if (marketInfo.liquidityUsd < 1000) {
-    riskScore += RISK_WEIGHTS.SEVERE;
-    flags.push('low_liquidity');
-  }
-
-  if (marketInfo.liquidityUsd < 10000) {
-    riskScore += RISK_WEIGHTS.MODERATE;
-    flags.push('limited_liquidity');
+    riskScore += 20;
+    flags.push('LOW_LIQUIDITY');
+  } else if (marketInfo.liquidityUsd < 5000) {
+    riskScore += 10;
+    flags.push('LOW_LIQUIDITY');
   }
 
   return {
-    pass: riskScore < WARNING_THRESHOLD,
+    pass: riskScore < 20,
     score: riskScore,
     flags,
-    details: {
-      liquidityUsd: marketInfo.liquidityUsd,
-      liquidityLocked: marketInfo.liquidityLocked,
-    },
   };
 }
 
 /**
- * Check dev and whale holdings
- * Returns risk score 0-15
+ * Check top holder concentration
  */
-async function checkHoldings(marketInfo: MarketInfo): Promise<ShieldCheck> {
-  const flags: string[] = [];
+function checkOwnership(marketInfo: MarketInfo): ShieldCheck {
+  const flags: RiskFlags[] = [];
   let riskScore = 0;
 
-  if (marketInfo.devWalletHoldings > 10) {
-    riskScore += RISK_WEIGHTS.HIGH;
-    flags.push('dev_holding_excessive');
-  } else if (marketInfo.devWalletHoldings > 5) {
-    riskScore += RISK_WEIGHTS.MODERATE;
-    flags.push('dev_holding_high');
+  if (marketInfo.topHolderPercent > 50) {
+    riskScore += 15;
+    flags.push('TOP_HOLDER_RISK');
+  } else if (marketInfo.topHolderPercent > 30) {
+    riskScore += 10;
+    flags.push('TOP_HOLDER_RISK');
   }
 
-  if (marketInfo.topHolderPercent > 30) {
-    riskScore += RISK_WEIGHTS.HIGH;
-    flags.push('whale_concentration_high');
-  } else if (marketInfo.topHolderPercent > 20) {
-    riskScore += RISK_WEIGHTS.MODERATE;
-    flags.push('whale_concentration_moderate');
+  if (marketInfo.devWalletHoldings > 20) {
+    riskScore += 15;
+    flags.push('DEV_HOLDINGS_HIGH');
+  } else if (marketInfo.devWalletHoldings > 10) {
+    riskScore += 10;
+    flags.push('DEV_HOLDINGS_HIGH');
   }
 
   return {
-    pass: riskScore < WARNING_THRESHOLD,
+    pass: riskScore < 15,
     score: riskScore,
     flags,
-    details: {
-      devHoldings: marketInfo.devWalletHoldings,
-      topHolderPercent: marketInfo.topHolderPercent,
-    },
   };
 }
 
+export interface FullAnalysisParams {
+  tokenInfo: TokenAccountInfo;
+  marketInfo: MarketInfo;
+  feeInfo: FeeInfo;
+  tokenMint: string;
+  tokenName?: string;
+  tokenSymbol?: string;
+}
+
 /**
- * Run full shield check
+ * Perform full token safety analysis
  */
-export async function runShieldCheck(
-  tokenInfo: TokenAccountInfo,
-  feeInfo: FeeInfo,
-  marketInfo: MarketInfo
-): Promise<TokenSafetyScore> {
-  const checks = await Promise.all([
-    checkMintAuthority(tokenInfo),
-    checkFreezeAuthority(tokenInfo),
-    checkFees(feeInfo),
-    checkLiquidity(marketInfo),
-    checkHoldings(marketInfo),
-  ]);
+export function analyzeTokenSafety(params: FullAnalysisParams): TokenSafetyScore {
+  const { tokenInfo, marketInfo, feeInfo, tokenMint, tokenName, tokenSymbol } = params;
 
-  const totalRisk = checks.reduce((sum, c) => sum + c.score, 0);
+  const mintCheck = checkMintAuthority(tokenInfo);
+  const freezeCheck = checkFreezeAuthority(tokenInfo);
+  const feeCheck = checkFees(feeInfo);
+  const liquidityCheck = checkLiquidity(marketInfo);
+  const ownershipCheck = checkOwnership(marketInfo);
 
-  const isHoneypot =
-    totalRisk >= HONEYPOT_THRESHOLD || checks.some((c) => c.flags.includes('sell_disabled'));
-  const isWarning = totalRisk >= WARNING_THRESHOLD && totalRisk < HONEYPOT_THRESHOLD;
-  const isSafe = totalRisk < WARNING_THRESHOLD;
+  const totalScore = mintCheck.score + freezeCheck.score + feeCheck.score + 
+                    liquidityCheck.score + ownershipCheck.score;
+
+  const isHoneypot = totalScore >= 100 || feeInfo.isSellDisabled;
+  const isSafe = totalScore < WARNING_THRESHOLD && !isHoneypot;
+
+  // Build findings
+  const findings: RiskFinding[] = [];
+  const allFlags = [
+    ...mintCheck.flags,
+    ...freezeCheck.flags,
+    ...feeCheck.flags,
+    ...liquidityCheck.flags,
+    ...ownershipCheck.flags,
+  ];
+
+  for (const flag of allFlags) {
+    let severity: RiskLevel = 'low';
+    if (flag === 'SELL_DISABLED' || flag === 'HONEYPOT_DETECTED') severity = 'critical';
+    else if (flag === 'MINT_ENABLED' || flag === 'HIGH_SELL_FEE') severity = 'high';
+    else if (flag === 'FREEZE_ENABLED' || flag === 'HIGH_BUY_FEE') severity = 'medium';
+
+    findings.push({
+      id: `finding_${flag}_${Date.now()}`,
+      category: 'other',
+      severity,
+      title: flag.replace(/_/g, ' '),
+      description: `Risk flag: ${flag}`,
+    });
+  }
+
+  const scores: SafetyScores = {
+    overall: Math.max(0, 100 - totalScore),
+    mintAuthority: mintCheck.pass ? 100 : 0,
+    freezeAuthority: freezeCheck.pass ? 100 : 0,
+    liquidity: liquidityCheck.pass ? 100 : 50,
+    ownership: ownershipCheck.pass ? 100 : 50,
+    transfers: feeCheck.pass ? 100 : 50,
+    developer: 75,
+  };
 
   return {
-    score: totalRisk,
-    passed: isSafe,
+    tokenMint,
+    tokenName,
+    tokenSymbol,
+    scores,
+    totalFindings: findings.length,
+    criticalFindings: findings.filter(f => f.severity === 'critical').length,
+    highFindings: findings.filter(f => f.severity === 'high').length,
+    mediumFindings: findings.filter(f => f.severity === 'medium').length,
+    lowFindings: findings.filter(f => f.severity === 'low').length,
     isHoneypot,
-    isWarning,
-    checks: {
-      mintAuthority: checks[0],
-      freezeAuthority: checks[1],
-      fees: checks[2],
-      liquidity: checks[3],
-      holdings: checks[4],
-    },
-    timestamp: Date.now(),
+    isSafe,
+    findings,
+    analyzedAt: Date.now(),
+    warnings: isHoneypot ? ['POTENTIAL HONEYPOT DETECTED'] : [],
   };
 }
 
 /**
- * Quick risk assessment
+ * Quick honeypot check
  */
-export function assessRisk(safetyScore: TokenSafetyScore): RiskFlags {
-  if (safetyScore.isHoneypot) {
-    return {
-      risk: 'critical',
-      emoji: '🚫',
-      message: 'HONEYPOT DETECTED - DO NOT TRADE',
-    };
+export function quickHoneypotCheck(
+  tokenInfo: TokenAccountInfo,
+  feeInfo: FeeInfo
+): { isHoneypot: boolean; reason?: string } {
+  if (feeInfo.isSellDisabled) {
+    return { isHoneypot: true, reason: 'Sell is disabled' };
   }
 
-  if (safetyScore.isWarning) {
-    return {
-      risk: 'warning',
-      emoji: '⚠️',
-      message: 'RISK DETECTED - PROCEED WITH CAUTION',
-    };
+  if (feeInfo.sellFee > 50) {
+    return { isHoneypot: true, reason: `Sell fee is ${feeInfo.sellFee}%` };
   }
 
-  if (safetyScore.score < SAFE_THRESHOLD) {
-    return {
-      risk: 'safe',
-      emoji: '✅',
-      message: 'NO SIGNIFICANT RISKS DETECTED',
-    };
+  if (tokenInfo.mintAuthority && tokenInfo.freezeAuthority) {
+    return { isHoneypot: false, reason: 'Both authorities still active - proceed with caution' };
   }
 
-  return {
-    risk: 'low',
-    emoji: '✅',
-    message: 'MINIMAL RISKS - ACCEPTABLE',
-  };
+  return { isHoneypot: false };
 }
 
 /**
- * Format shield report for display
+ * Get risk level from score
  */
-export function formatShieldReport(score: TokenSafetyScore): string {
-  const risk = assessRisk(score);
-  let report = `${risk.emoji} *SHIELD CHECK: ${risk.message}*
+export function getRiskLevel(score: number): RiskLevel {
+  if (score >= HONEYPOT_THRESHOLD) return 'critical';
+  if (score >= SAFE_THRESHOLD) return 'high';
+  if (score >= WARNING_THRESHOLD) return 'medium';
+  return 'safe';
+}
 
-`;
+/**
+ * Format safety score for display
+ */
+export function formatSafetyReport(score: TokenSafetyScore): string {
+  const emoji = score.isHoneypot ? '🚨' : score.isSafe ? '✅' : '⚠️';
+  const status = score.isHoneypot ? 'HONEYPOT' : score.isSafe ? 'SAFE' : 'CAUTION';
+  
+  let report = `${emoji} *Shield Analysis: ${status}*\n\n`;
+  report += `Token: ${score.tokenSymbol || score.tokenMint.substring(0, 8)}\n`;
+  report += `Overall Score: ${score.scores.overall}/100\n\n`;
 
-  report += `📊 Risk Score: *${score.score}/100*
-
-`;
-
-  // Failed checks
-  const failed = Object.entries(score.checks).filter(([, c]) => !c.pass);
-  if (failed.length > 0) {
-    report += '*Risk Factors:*\n';
-    for (const [, check] of failed) {
-      for (const flag of check.flags) {
-        report += `• ${flag.replace(/_/g, ' ')} (+${check.score} risk)\n`;
-      }
+  if (score.findings.length > 0) {
+    report += '*Findings:*\n';
+    for (const finding of score.findings.slice(0, 5)) {
+      const severityEmoji = finding.severity === 'critical' ? '🔴' : 
+                           finding.severity === 'high' ? '🟠' :
+                           finding.severity === 'medium' ? '🟡' : '🟢';
+      report += `${severityEmoji} ${finding.title}\n`;
     }
-    report += '
-';
   }
 
-  // Passed checks
-  const passed = Object.entries(score.checks).filter(([, c]) => c.pass);
-  if (passed.length > 0) {
-    report += '*Verified Safe:*\n';
-    for (const [, check] of passed) {
-      if (check.flags.length > 0) {
-        report += `• ${check.flags[0].replace(/_/g, ' ')}\n`;
-      }
+  if (score.warnings.length > 0) {
+    report += '\n*Warnings:*\n';
+    for (const warning of score.warnings) {
+      report += `⚠️ ${warning}\n`;
     }
-    report += '
-';
   }
-
-  report += `🕐 Checked: ${new Date(score.timestamp).toISOString()}`;
 
   return report;
 }

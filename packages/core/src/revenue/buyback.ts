@@ -1,7 +1,6 @@
 /**
  * Buyback Module - Treasury token purchases
  */
-import { PublicKey } from '@solana/web3.js';
 
 export interface BuyBackConfig {
   treasuryWallet: string;

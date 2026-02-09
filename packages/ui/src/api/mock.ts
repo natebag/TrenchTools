@@ -71,7 +71,7 @@ export async function estimateGas(): Promise<number> {
   return 0.000005 + Math.random() * 0.000005
 }
 
-export async function broadcastTransaction(txData: unknown): Promise<{ hash: string }> {
+export async function broadcastTransaction(_txData: unknown): Promise<{ hash: string }> {
   await new Promise(resolve => setTimeout(resolve, 1000))
   return { hash: '0x' + Array(64).fill(0).map(() => Math.floor(Math.random() * 16).toString(16)).join('') }
 }

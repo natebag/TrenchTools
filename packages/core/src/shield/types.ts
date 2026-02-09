@@ -5,6 +5,55 @@
 
 import { PublicKey } from '@solana/web3.js';
 
+// ============ Constants ============
+
+/** Threshold for honeypot detection (score below = honeypot) */
+export const HONEYPOT_THRESHOLD = 30;
+
+/** Threshold for warning (score below = caution) */
+export const WARNING_THRESHOLD = 50;
+
+/** Threshold for safe (score above = safe) */
+export const SAFE_THRESHOLD = 70;
+
+/** Risk weights for different check categories */
+export const RISK_WEIGHTS = {
+  mintAuthority: 25,
+  freezeAuthority: 20,
+  liquidity: 15,
+  fees: 20,
+  ownership: 10,
+  transfers: 10,
+} as const;
+
+// ============ Risk Flags ============
+
+export type RiskFlags =
+  | 'MINT_ENABLED'
+  | 'FREEZE_ENABLED'
+  | 'LOW_LIQUIDITY'
+  | 'UNLOCKED_LIQUIDITY'
+  | 'HIGH_BUY_FEE'
+  | 'HIGH_SELL_FEE'
+  | 'SELL_DISABLED'
+  | 'TRANSFER_DISABLED'
+  | 'TOP_HOLDER_RISK'
+  | 'DEV_HOLDINGS_HIGH'
+  | 'NO_LP_BURN'
+  | 'HONEYPOT_DETECTED'
+  | 'RUGGED'
+  | 'RENOUNCED'
+  | 'VERIFIED_SAFE';
+
+// ============ Check Result ============
+
+export interface ShieldCheck {
+  pass: boolean;
+  score: number;
+  flags: RiskFlags[];
+  details?: Record<string, unknown>;
+}
+
 /** Risk severity levels */
 export type RiskLevel = 'safe' | 'low' | 'medium' | 'high' | 'critical';
 

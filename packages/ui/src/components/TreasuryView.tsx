@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Wallet, Send, QrCode, History, AlertCircle } from 'lucide-react';
 
 interface WalletStatus {
@@ -17,7 +17,7 @@ interface TreasuryStatus {
 }
 
 export function TreasuryView() {
-  const [status, setStatus] = useState<TreasuryStatus>({
+  const [status] = useState<TreasuryStatus>({
     mainWallet: '7VHsSm...3Jv',
     mainBalance: 1.5,
     sniperWallets: [
@@ -28,7 +28,6 @@ export function TreasuryView() {
     canFundAll: true,
   });
   const [showQR, setShowQR] = useState(false);
-  const [fundingAmount, setFundingAmount] = useState(0.05);
 
   return (
     <div className="space-y-6">

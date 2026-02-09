@@ -9,4 +9,5 @@ export default defineConfig({
   banner: {
     js: '#!/usr/bin/env node',
   },
+  external: ['@solana/web3.js', '@solana/spl-token'],
 });

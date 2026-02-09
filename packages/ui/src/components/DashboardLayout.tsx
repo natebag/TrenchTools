@@ -1,28 +1,27 @@
 import { useState } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Navigate } from 'react-router-dom'
 import { 
   Wallet, 
   Target, 
   Shield, 
   LineChart, 
   Settings, 
-  Vault,
+  LockKeyhole,
   Menu,
-  X,
   Activity,
   Zap
 } from 'lucide-react'
 import { WalletProvider } from '@/context/WalletContext'
-import TreasuryView from './TreasuryView'
-import WalletManager from './WalletManager'
-import SniperControl from './SniperControl'
-import ShieldScanner from './ShieldScanner'
-import PnLCharts from './PnLCharts'
-import ActivityGenerator from './ActivityGenerator'
-import SettingsPanel from './SettingsPanel'
+import { TreasuryView } from './TreasuryView'
+import { WalletManager } from './WalletManager'
+import { SniperControl } from './SniperControl'
+import { ShieldScanner } from './ShieldScanner'
+import { PnLCharts } from './PnLCharts'
+import { ActivityGenerator } from './ActivityGenerator'
+import { SettingsPanel } from './SettingsPanel'
 
 const navItems = [
-  { path: '/treasury', label: 'Treasury', icon: Vault, description: 'Main funding & balances' },
+  { path: '/treasury', label: 'Treasury', icon: LockKeyhole, description: 'Main funding & balances' },
   { path: '/wallets', label: 'Wallets', icon: Wallet, description: 'HD wallet management' },
   { path: '/snipe', label: 'Sniper', icon: Target, description: 'Token sniping control' },
   { path: '/shield', label: 'Shield', icon: Shield, description: 'Security scanner' },
@@ -147,7 +146,7 @@ function Header({ onMenuClick }: { onMenuClick: () => void }) {
 
 function AppContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [currentPath, setCurrentPath] = useState(window.location.pathname)
+  const [, setCurrentPath] = useState(window.location.pathname)
   
   // Listen for navigation changes
   window.addEventListener('popstate', () => {
@@ -187,10 +186,12 @@ function AppContent() {
   )
 }
 
-export default function DashboardLayout() {
+export function DashboardLayout() {
   return (
     <WalletProvider>
       <AppContent />
     </WalletProvider>
   )
 }
+
+export default DashboardLayout;
