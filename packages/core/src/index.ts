@@ -102,3 +102,11 @@ export * from './treasury/index.js';
 
 // Logger
 export { logger } from './logger.js';
+
+// ============ Marketchoomba Integration ============
+
+// Orchestrator - Bot management and market making
+export * from './orchestrator/index.js';
+
+// Detection - Manipulation detection (Powered by Allium)
+export * from './detection/index.js';

@@ -6,3 +6,8 @@ export { WalletManager } from './WalletManager';
 export { ShieldScanner } from './ShieldScanner';
 export { ActivityGenerator } from './ActivityGenerator';
 export { SettingsPanel } from './SettingsPanel';
+
+// Marketchoomba Integration
+export { BotManager } from './BotManager';
+export { DetectionDashboard } from './DetectionDashboard';
+export { VolumeControl } from './VolumeControl';

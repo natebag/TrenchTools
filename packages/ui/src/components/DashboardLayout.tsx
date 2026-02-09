@@ -9,7 +9,10 @@ import {
   LockKeyhole,
   Menu,
   Activity,
-  Zap
+  Zap,
+  Bot,
+  Eye,
+  Volume2
 } from 'lucide-react'
 import { WalletProvider } from '@/context/WalletContext'
 import { TreasuryView } from './TreasuryView'
@@ -19,6 +22,9 @@ import { ShieldScanner } from './ShieldScanner'
 import { PnLCharts } from './PnLCharts'
 import { ActivityGenerator } from './ActivityGenerator'
 import { SettingsPanel } from './SettingsPanel'
+import { BotManager } from './BotManager'
+import { DetectionDashboard } from './DetectionDashboard'
+import { VolumeControl } from './VolumeControl'
 
 const navItems = [
   { path: '/treasury', label: 'Treasury', icon: LockKeyhole, description: 'Main funding & balances' },
@@ -27,6 +33,9 @@ const navItems = [
   { path: '/shield', label: 'Shield', icon: Shield, description: 'Security scanner' },
   { path: '/pnl', label: 'P&L', icon: LineChart, description: 'Portfolio analytics' },
   { path: '/activity', label: 'Activity', icon: Activity, description: 'Generate fake tx history' },
+  { path: '/bots', label: 'Bots', icon: Bot, description: 'Market maker bots' },
+  { path: '/detection', label: 'Detection', icon: Eye, description: 'Manipulation analysis' },
+  { path: '/volume', label: 'Volume', icon: Volume2, description: 'Volume boosting' },
   { path: '/settings', label: 'Settings', icon: Settings, description: 'Configuration' },
 ]
 
@@ -164,6 +173,9 @@ function AppContent() {
       case '/shield': return <ShieldScanner />
       case '/pnl': return <PnLCharts />
       case '/activity': return <ActivityGenerator />
+      case '/bots': return <BotManager />
+      case '/detection': return <DetectionDashboard />
+      case '/volume': return <VolumeControl />
       case '/settings': return <SettingsPanel />
       default: return <Navigate to="/treasury" />
     }
