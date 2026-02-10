@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Navigate } from 'react-router-dom'
 import { 
   Wallet, 
   Target, 
@@ -15,6 +14,7 @@ import {
   Volume2
 } from 'lucide-react'
 import { WalletProvider } from '@/context/WalletContext'
+import { Dashboard } from './Dashboard'
 import { TreasuryView } from './TreasuryView'
 import { WalletManagerBrowser } from './WalletManagerBrowser'
 import { SniperControl } from './SniperControl'
@@ -27,6 +27,7 @@ import { DetectionDashboard } from './DetectionDashboard'
 import { VolumeControl } from './VolumeControl'
 
 const navItems = [
+  { path: '/', label: 'Dashboard', icon: Activity, description: 'Overview & quick actions' },
   { path: '/treasury', label: 'Treasury', icon: LockKeyhole, description: 'Main funding & balances' },
   { path: '/wallets', label: 'Wallets', icon: Wallet, description: 'HD wallet management' },
   { path: '/snipe', label: 'Sniper', icon: Target, description: 'Token sniping control' },
@@ -167,6 +168,7 @@ function AppContent() {
     const path = window.location.pathname
     
     switch (path) {
+      case '/': return <Dashboard />
       case '/treasury': return <TreasuryView />
       case '/wallets': return <WalletManagerBrowser />
       case '/snipe': return <SniperControl />
@@ -177,7 +179,7 @@ function AppContent() {
       case '/detection': return <DetectionDashboard />
       case '/volume': return <VolumeControl />
       case '/settings': return <SettingsPanel />
-      default: return <Navigate to="/treasury" />
+      default: return <Dashboard />
     }
   }
   

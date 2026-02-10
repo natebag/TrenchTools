@@ -10,24 +10,64 @@ TrenchSniper OS provides professional-grade token launching, sniping, and tradin
 
 While paid tools like Proxima charge hundreds per month for access, TrenchSniper OS puts the same capabilities in everyone's hands.
 
+---
+
+## 📚 Documentation
+
+| Guide | Description |
+|-------|-------------|
+| [**Getting Started**](./docs/GETTING_STARTED.md) | Installation, setup, and first steps |
+| [**Bot Configuration**](./docs/BOT_CONFIGURATION.md) | Market making bot settings and management |
+| [**Detection Guide**](./docs/DETECTION_GUIDE.md) | Manipulation detection and analysis |
+| [**Volume Patterns**](./docs/VOLUME_PATTERNS.md) | Volume boosting strategies |
+| [**FAQ**](./docs/FAQ.md) | Common questions and troubleshooting |
+
+---
+
 ## Features
 
-### ✅ Completed
-- **Token Creation**: Launch tokens on PumpFun with metadata upload
-- **PumpFun Trading**: Buy/sell on bonding curves
-- **Raydium Trading**: AMM pool swaps with quote calculation
-- **Meteora DLMM**: Concentrated liquidity pool trading
-- **Smart Router**: Auto-route to best DEX with migration detection
-- **Strategy Configs**: Pre-built aggressive/balanced/conservative strategies
-- **Wallet Management**: HD generation, AES-256 encryption, batch operations
-- **Jito Bundles**: MEV protection through Jito bundle builder
-- **Multi-Wallet**: Coordinated sniping across multiple wallets
-- **CLI**: Full command-line interface
+### 🚀 Trading
+| Feature | Description |
+|---------|-------------|
+| **Token Creation** | Launch tokens on PumpFun with metadata upload |
+| **PumpFun Trading** | Buy/sell on bonding curves |
+| **Raydium Trading** | AMM pool swaps with quote calculation |
+| **Meteora DLMM** | Concentrated liquidity pool trading |
+| **Smart Router** | Auto-route to best DEX with migration detection |
+| **Jito Bundles** | MEV protection through Jito bundle builder |
 
-### 📋 Planned
-- Web UI dashboard
-- Telegram bot interface
-- Portfolio analytics
+### 🤖 Orchestrator
+| Feature | Description |
+|---------|-------------|
+| **Market Making Bots** | Automated trading with configurable intervals |
+| **Volume Patterns** | Organic, steady, burst, and wave patterns |
+| **Multi-Bot Management** | Run 50+ bots concurrently |
+| **State Persistence** | WAL-based recovery and snapshots |
+| **RPC Load Balancing** | Multiple endpoints with health checks |
+
+### 🛡️ Detection (Powered by Allium)
+| Feature | Description |
+|---------|-------------|
+| **Manipulation Scoring** | 0-100 risk score for any token |
+| **Pattern Detection** | Wallet clustering, interval regularity, coordination |
+| **Real-Time Monitoring** | Continuous analysis with alerts |
+| **On-Chain Analysis** | Deep transaction and funding pattern analysis |
+
+### 💼 Wallet Management
+| Feature | Description |
+|---------|-------------|
+| **HD Generation** | Derive multiple wallets from seed |
+| **AES-256 Encryption** | Military-grade vault security |
+| **Batch Operations** | Fund, consolidate, and manage at scale |
+| **Multi-Wallet Sniping** | Coordinate across wallet arrays |
+
+### 🖥️ Interfaces
+| Interface | Status |
+|-----------|--------|
+| **Web UI Dashboard** | ✅ React + Vite |
+| **CLI** | ✅ Full command support |
+| **Telegram Bot** | ✅ Basic commands |
+| **Portfolio Analytics** | 📋 Planned |
 
 ## Quick Start
 
@@ -161,28 +201,40 @@ console.log(strategy.autoSell.takeProfitMultiplier); // 2.0
 ```
 TrenchSniper-OS/
 ├── packages/
-│   ├── core/           # Core trading modules
+│   ├── core/              # Core trading modules
 │   │   └── src/
-│   │       ├── wallet/    # Wallet generation & management
-│   │       ├── trading/   # Trading types
-│   │       └── snipe/
-│   │           ├── pumpfun.ts  # PumpFun bonding curve
-│   │           ├── create.ts   # Token creation
-│   │           ├── raydium.ts  # Raydium AMM
-│   │           ├── meteora.ts  # Meteora DLMM
-│   │           └── router.ts   # Smart router
+│   │       ├── wallet/       # Wallet generation & encryption
+│   │       ├── snipe/        # DEX trading (PumpFun, Raydium, Meteora)
+│   │       ├── detection/    # Manipulation detection (Allium)
+│   │       ├── orchestrator/ # Bot state machine & scheduling
+│   │       ├── activity/     # Volume pattern generation
+│   │       └── pnl/          # P&L tracking & analytics
 │   │
-│   ├── snipe/          # Sniping engine
+│   ├── ui/               # Web dashboard (React + Vite)
 │   │   └── src/
-│   │       ├── sniper.ts  # TokenSniper class
-│   │       └── jito.ts    # Jito bundle builder
+│   │       ├── components/   # BotManager, VolumeControl, Detection
+│   │       └── context/      # WalletContext, state management
 │   │
-│   └── cli/            # Command line interface
-│       └── src/
-│           ├── commands/     # CLI commands
-│           └── strategies/   # Strategy configs
+│   ├── snipe/            # Sniping engine
+│   │   └── src/
+│   │       ├── sniper.ts     # TokenSniper class
+│   │       └── jito.ts       # Jito bundle builder
+│   │
+│   ├── cli/              # Command line interface
+│   │   └── src/
+│   │       ├── commands/     # snipe, exit, wallet, launch
+│   │       └── strategies/   # aggressive/balanced/conservative
+│   │
+│   └── bot-telegram/     # Telegram bot interface
 │
-└── trench.example.yaml # Example configuration
+├── docs/                 # Documentation
+│   ├── GETTING_STARTED.md
+│   ├── BOT_CONFIGURATION.md
+│   ├── DETECTION_GUIDE.md
+│   ├── VOLUME_PATTERNS.md
+│   └── FAQ.md
+│
+└── trench.example.yaml   # Example configuration
 ```
 
 ## Packages

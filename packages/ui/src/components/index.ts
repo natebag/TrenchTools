@@ -1,4 +1,5 @@
 export { DashboardLayout } from './DashboardLayout';
+export { Dashboard } from './Dashboard';
 export { TreasuryView } from './TreasuryView';
 export { SniperControl } from './SniperControl';
 export { PnLCharts } from './PnLCharts';
