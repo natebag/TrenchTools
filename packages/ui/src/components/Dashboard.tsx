@@ -19,6 +19,8 @@ import {
   Lock,
   Server
 } from 'lucide-react'
+import { QuickSwap } from './QuickSwap'
+import { PortfolioHoldings } from './PortfolioHoldings'
 
 // Mock data for demonstration
 const portfolioData = {
@@ -457,20 +459,28 @@ export function Dashboard() {
         {/* Portfolio Overview */}
         <PortfolioCard />
         
-        {/* Active Bots */}
-        <ActiveBotsCard />
+        {/* Quick Swap */}
+        <QuickSwap />
         
         {/* Recent Alerts */}
         <RecentAlertsCard />
         
-        {/* Quick Actions */}
-        <QuickActionsCard />
+        {/* Active Bots */}
+        <ActiveBotsCard />
         
         {/* System Status */}
         <SystemStatusCard />
         
+        {/* Quick Actions */}
+        <QuickActionsCard />
+        
         {/* Recent Activity - spans 2 columns on large screens */}
         <RecentActivityCard />
+        
+        {/* Portfolio Holdings - spans full width */}
+        <div className="lg:col-span-3">
+          <PortfolioHoldings />
+        </div>
       </div>
     </div>
   )

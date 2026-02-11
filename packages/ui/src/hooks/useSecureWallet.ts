@@ -40,6 +40,7 @@ export interface UseSecureWalletReturn {
   changePassword: (oldPassword: string, newPassword: string) => Promise<void>;
   deleteVault: () => void;
   clearError: () => void;
+  getKeypairs: () => import('@solana/web3.js').Keypair[];
 }
 
 // ============ Hook ============
@@ -57,7 +58,7 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
   const [error, setError] = useState<string | null>(null);
   
   const manager = getWalletManager();
-  const connection = new Connection(rpcUrl, 'confirmed');
+  // Connection is created fresh in refreshBalances to use current rpcUrl
   
   // Initialize state from manager
   useEffect(() => {
@@ -68,36 +69,81 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
   
   // Fetch balances for all wallets
   const refreshBalances = useCallback(async () => {
-    if (wallets.length === 0) return;
+    console.log('[TrenchSniper] Refreshing balances, RPC:', rpcUrl);
     
-    try {
-      const updatedWallets = await Promise.all(
-        wallets.map(async (wallet) => {
+    setWallets(currentWallets => {
+      if (currentWallets.length === 0) {
+        console.log('[TrenchSniper] No wallets to refresh');
+        return currentWallets;
+      }
+      
+      console.log('[TrenchSniper] Fetching for', currentWallets.length, 'wallets');
+      
+      // Fetch balances async and update
+      Promise.all(
+        currentWallets.map(async (wallet) => {
           try {
+            console.log('[TrenchSniper] Fetching balance for:', wallet.address);
             const pubkey = new PublicKey(wallet.address);
-            const balance = await connection.getBalance(pubkey);
+            const conn = new Connection(rpcUrl, 'confirmed');
+            const balance = await conn.getBalance(pubkey);
+            console.log('[TrenchSniper] Got balance:', balance / LAMPORTS_PER_SOL, 'SOL');
             return {
               ...wallet,
               balance: balance / LAMPORTS_PER_SOL,
             };
-          } catch {
+          } catch (err) {
+            console.error('[TrenchSniper] Balance fetch error:', err);
             return wallet;
           }
         })
-      );
-      setWallets(updatedWallets);
-    } catch (err) {
-      console.error('Failed to refresh balances:', err);
-    }
-  }, [wallets, connection]);
+      ).then(updatedWallets => {
+        console.log('[TrenchSniper] Setting updated wallets');
+        setWallets(updatedWallets);
+      });
+      
+      return currentWallets;
+    });
+  }, [rpcUrl]);
   
-  // Auto-fetch balances when unlocked
+  // Auto-fetch balances when unlocked or wallets change
   useEffect(() => {
     if (!isLocked && autoFetchBalances && wallets.length > 0) {
-      refreshBalances();
+      // Small delay to ensure state is settled
+      const timer = setTimeout(() => {
+        refreshBalances();
+      }, 500);
+      return () => clearTimeout(timer);
     }
-  }, [isLocked, wallets.length, autoFetchBalances]);
+  }, [isLocked, wallets.length, autoFetchBalances, rpcUrl]);
   
+  // Sync active wallet to localStorage for header display
+  useEffect(() => {
+    if (!isLocked && wallets.length > 0) {
+      const activeWallet = wallets[0]; // Use first wallet as active
+      localStorage.setItem('trench_active_wallet', JSON.stringify({
+        address: activeWallet.address,
+        balance: activeWallet.balance || 0,
+        name: activeWallet.name
+      }));
+      // Save all wallets for account switcher
+      localStorage.setItem('trench_all_wallets', JSON.stringify(
+        wallets.map(w => ({
+          address: w.address,
+          balance: w.balance || 0,
+          name: w.name,
+          type: w.type
+        }))
+      ));
+      // Dispatch event for header to update
+      window.dispatchEvent(new Event('wallet-updated'));
+    } else if (isLocked) {
+      localStorage.removeItem('trench_active_wallet');
+      localStorage.removeItem('trench_all_wallets');
+      window.dispatchEvent(new Event('wallet-updated'));
+    }
+  }, [isLocked, wallets]);
+
   // Unlock vault
   const unlock = useCallback(async (password: string) => {
     setIsLoading(true);
@@ -273,6 +319,11 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
   const clearError = useCallback(() => {
     setError(null);
   }, []);
+
+  // Get all keypairs for signing (must be unlocked)
+  const getKeypairs = useCallback(() => {
+    return manager.getAllKeypairs();
+  }, [manager]);
   
   return {
     wallets,
@@ -292,6 +343,7 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
     changePassword,
     deleteVault,
     clearError,
+    getKeypairs,
   };
 }
 

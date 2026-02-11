@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { 
   Volume2, 
   TrendingUp, 
@@ -8,8 +8,20 @@ import {
   Pause,
   BarChart3,
   Wallet,
-  AlertCircle
+  AlertCircle,
+  CheckCircle,
+  XCircle,
+  Clock,
+  ArrowUpRight,
+  ArrowDownRight,
+  Key,
+  ExternalLink
 } from 'lucide-react'
+import { useSecureWallet } from '@/hooks/useSecureWallet'
+import { useNetwork } from '@/context/NetworkContext'
+import { useActiveTokens } from '@/context/ActiveTokensContext'
+import { useTxHistory } from '@/context/TxHistoryContext'
+import { Connection, VersionedTransaction } from '@solana/web3.js'
 
 // Types for Volume Boosting configuration
 interface VolumeConfig {
@@ -33,7 +45,9 @@ interface VolumeStats {
   successRate: number
 }
 
-// Mock data
+const STORAGE_KEY = 'trench_volume_config';
+
+// Default config
 const defaultConfig: VolumeConfig = {
   enabled: false,
   targetToken: '',
@@ -45,6 +59,30 @@ const defaultConfig: VolumeConfig = {
   maxSwapSol: 0.1,
   minIntervalMs: 30000,
   maxIntervalMs: 120000,
+}
+
+// Load config from localStorage
+function loadConfig(): VolumeConfig {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      // Merge with defaults to handle any missing fields
+      return { ...defaultConfig, ...parsed, enabled: false }; // Always start stopped
+    }
+  } catch (e) {
+    console.error('Failed to load volume config from localStorage:', e);
+  }
+  return defaultConfig;
+}
+
+// Save config to localStorage
+function saveConfig(config: VolumeConfig) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+  } catch (e) {
+    console.error('Failed to save volume config to localStorage:', e);
+  }
 }
 
 const mockStats: VolumeStats = {
@@ -163,13 +201,41 @@ function StatCard({ label, value, unit, icon: Icon, color }: {
   )
 }
 
+interface TransactionLog {
+  id: string;
+  timestamp: number;
+  type: 'buy' | 'sell';
+  amount: number;
+  wallet: string;
+  status: 'success' | 'failed' | 'pending';
+  txHash?: string;
+}
+
+const JUPITER_API_URL = 'https://api.jup.ag/swap/v1';
+const WSOL = 'So11111111111111111111111111111111111111112';
+
 export function VolumeControl() {
-  const [config, setConfig] = useState<VolumeConfig>(defaultConfig)
-  const [stats] = useState<VolumeStats>(mockStats)
+  const { rpcUrl, network } = useNetwork();
+  const { wallets, isLocked, getKeypairs } = useSecureWallet({ rpcUrl });
+  const { addToken } = useActiveTokens();
+  const { addTrade } = useTxHistory();
+  
+  const [config, setConfig] = useState<VolumeConfig>(() => loadConfig())
+  const [stats, setStats] = useState<VolumeStats>({ ...mockStats, totalVolume24h: 0, swapsExecuted: 0, currentRate: 0 })
   const [isRunning, setIsRunning] = useState(false)
+  const [txLogs, setTxLogs] = useState<TransactionLog[]>([])
+  const [startTime, setStartTime] = useState<number | null>(null)
+  const [jupiterApiKey, setJupiterApiKey] = useState(() => localStorage.getItem('jupiter_api_key') || '')
+  const [useRealTrades, setUseRealTrades] = useState(false)
+  const [selectedWalletIds, setSelectedWalletIds] = useState<string[]>([])
+  const intervalRef = useRef<NodeJS.Timeout | null>(null)
   
   const updateConfig = (updates: Partial<VolumeConfig>) => {
-    setConfig(prev => ({ ...prev, ...updates }))
+    setConfig(prev => {
+      const newConfig = { ...prev, ...updates };
+      saveConfig(newConfig);
+      return newConfig;
+    })
   }
   
   const handleIntensityChange = (intensity: VolumeConfig['intensity']) => {
@@ -183,10 +249,247 @@ export function VolumeControl() {
     })
   }
   
+  // Save Jupiter API key to localStorage
+  useEffect(() => {
+    if (jupiterApiKey) {
+      localStorage.setItem('jupiter_api_key', jupiterApiKey);
+    }
+  }, [jupiterApiKey]);
+
+  // Execute real swap via Jupiter
+  const executeRealSwap = useCallback(async (isBuy: boolean, amountSol: number) => {
+    const allKeypairs = getKeypairs();
+    if (allKeypairs.length === 0) {
+      throw new Error('No wallets available. Unlock your vault first.');
+    }
+
+    // Filter to selected wallets only, or use all if none selected
+    let availableKeypairs = allKeypairs;
+    if (selectedWalletIds.length > 0) {
+      availableKeypairs = allKeypairs.filter((kp, idx) => {
+        const wallet = wallets[idx];
+        return wallet && selectedWalletIds.includes(wallet.id);
+      });
+      if (availableKeypairs.length === 0) {
+        availableKeypairs = allKeypairs; // Fallback to all
+      }
+    }
+
+    // Pick a random wallet from available ones
+    const walletIndex = Math.floor(Math.random() * availableKeypairs.length);
+    const wallet = availableKeypairs[walletIndex];
+    const connection = new Connection(rpcUrl, 'confirmed');
+
+    const inputMint = isBuy ? WSOL : config.targetToken;
+    const outputMint = isBuy ? config.targetToken : WSOL;
+    const amountLamports = Math.floor(amountSol * 1e9);
+
+    // Get quote
+    const quoteUrl = `${JUPITER_API_URL}/quote?` + new URLSearchParams({
+      inputMint,
+      outputMint,
+      amount: String(amountLamports),
+      slippageBps: '200' // 2% slippage for safety
+    });
+
+    const quoteResp = await fetch(quoteUrl, {
+      headers: { 'x-api-key': jupiterApiKey }
+    });
+
+    if (!quoteResp.ok) {
+      throw new Error(`Quote failed: ${quoteResp.status}`);
+    }
+
+    const quote = await quoteResp.json();
+
+    // Get swap transaction
+    const swapResp = await fetch(`${JUPITER_API_URL}/swap`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': jupiterApiKey
+      },
+      body: JSON.stringify({
+        quoteResponse: quote,
+        userPublicKey: wallet.publicKey.toBase58(),
+        wrapAndUnwrapSol: true,
+        dynamicComputeUnitLimit: true,
+        prioritizationFeeLamports: 'auto'
+      })
+    });
+
+    if (!swapResp.ok) {
+      throw new Error(`Swap failed: ${swapResp.status}`);
+    }
+
+    const swapResult = await swapResp.json();
+
+    // Sign and send
+    const swapTxBuf = Buffer.from(swapResult.swapTransaction, 'base64');
+    const tx = VersionedTransaction.deserialize(swapTxBuf);
+    tx.sign([wallet]);
+
+    const signature = await connection.sendTransaction(tx, {
+      skipPreflight: false,
+      maxRetries: 3
+    });
+
+    // Don't wait for full confirmation to keep it fast
+    return {
+      success: true,
+      txHash: signature,
+      wallet: wallet.publicKey.toBase58().slice(0, 8) + '...'
+    };
+  }, [getKeypairs, rpcUrl, jupiterApiKey, config, selectedWalletIds, wallets]);
+
   const handleToggle = () => {
+    if (!isRunning) {
+      // Starting
+      if (!config.targetToken) {
+        alert('Please enter a target token mint address');
+        return;
+      }
+      if (useRealTrades && !jupiterApiKey) {
+        alert('Please enter your Jupiter API key for real trades');
+        return;
+      }
+      if (useRealTrades && isLocked) {
+        alert('Please unlock your wallet vault first (go to Wallets page)');
+        return;
+      }
+      setStartTime(Date.now());
+      setStats(prev => ({ ...prev, totalVolume24h: 0, swapsExecuted: 0, currentRate: 0 }));
+      setTxLogs([]);
+      
+      // Add token to active tokens for Detection Dashboard
+      addToken({
+        mint: config.targetToken,
+        source: 'volume'
+      });
+    } else {
+      // Stopping
+      setStartTime(null);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    }
     setIsRunning(!isRunning)
     updateConfig({ enabled: !isRunning })
   }
+
+  // Transaction generation loop
+  useEffect(() => {
+    if (!isRunning) return;
+
+    const executeTrade = async () => {
+      const isBuy = Math.random() > 0.5;
+      const amount = config.minSwapSol + Math.random() * (config.maxSwapSol - config.minSwapSol);
+
+      if (useRealTrades) {
+        // REAL ON-CHAIN TRADE
+        const pendingTx: TransactionLog = {
+          id: `tx-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          timestamp: Date.now(),
+          type: isBuy ? 'buy' : 'sell',
+          amount: parseFloat(amount.toFixed(4)),
+          wallet: 'Executing...',
+          status: 'pending',
+        };
+        setTxLogs(prev => [pendingTx, ...prev].slice(0, 50));
+
+        try {
+          const result = await executeRealSwap(isBuy, amount);
+          
+          // Update the pending tx with result
+          setTxLogs(prev => prev.map(tx => 
+            tx.id === pendingTx.id 
+              ? { ...tx, status: 'success' as const, txHash: result.txHash, wallet: result.wallet }
+              : tx
+          ));
+
+          // Record trade for chart markers
+          addTrade({
+            timestamp: Date.now(),
+            type: isBuy ? 'buy' : 'sell',
+            tokenMint: config.targetToken,
+            amount: parseFloat(amount.toFixed(4)),
+            wallet: result.wallet,
+            txHash: result.txHash,
+            status: 'success'
+          });
+
+          setStats(prev => ({
+            ...prev,
+            swapsExecuted: prev.swapsExecuted + 1,
+            totalVolume24h: prev.totalVolume24h + amount,
+            currentRate: (prev.totalVolume24h + amount) / ((Date.now() - (startTime || Date.now())) / 3600000) || 0,
+            successRate: ((prev.swapsExecuted * prev.successRate / 100) + 1) / (prev.swapsExecuted + 1) * 100,
+          }));
+        } catch (err) {
+          console.error('Swap failed:', err);
+          setTxLogs(prev => prev.map(tx => 
+            tx.id === pendingTx.id 
+              ? { ...tx, status: 'failed' as const, wallet: (err as Error).message.slice(0, 30) }
+              : tx
+          ));
+        }
+      } else {
+        // SIMULATION MODE
+        const walletNum = Math.floor(Math.random() * config.maxWallets) + 1;
+        const success = Math.random() > 0.05;
+
+        const newTx: TransactionLog = {
+          id: `tx-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          timestamp: Date.now(),
+          type: isBuy ? 'buy' : 'sell',
+          amount: parseFloat(amount.toFixed(4)),
+          wallet: `Wallet ${walletNum} (sim)`,
+          status: success ? 'success' : 'failed',
+          txHash: success ? `sim-${Math.random().toString(36).slice(2)}` : undefined,
+        };
+
+        setTxLogs(prev => [newTx, ...prev].slice(0, 50));
+
+        if (success) {
+          // Record simulated trade for chart markers
+          addTrade({
+            timestamp: Date.now(),
+            type: isBuy ? 'buy' : 'sell',
+            tokenMint: config.targetToken,
+            amount: parseFloat(amount.toFixed(4)),
+            wallet: `Wallet ${walletNum} (sim)`,
+            txHash: newTx.txHash,
+            status: 'success'
+          });
+
+          setStats(prev => ({
+            ...prev,
+            swapsExecuted: prev.swapsExecuted + 1,
+            totalVolume24h: prev.totalVolume24h + amount,
+            currentRate: (prev.totalVolume24h + amount) / ((Date.now() - (startTime || Date.now())) / 3600000) || 0,
+            successRate: ((prev.swapsExecuted * prev.successRate / 100) + 1) / (prev.swapsExecuted + 1) * 100,
+          }));
+        }
+      }
+    };
+
+    // Execute first trade immediately
+    executeTrade();
+
+    // Set interval based on config (real trades use actual intervals, sim uses fast demo)
+    const intervalMs = useRealTrades 
+      ? config.minIntervalMs + Math.random() * (config.maxIntervalMs - config.minIntervalMs)
+      : 2000 + Math.random() * 3000; // Fast demo for simulation
+
+    intervalRef.current = setInterval(executeTrade, intervalMs);
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [isRunning, config, startTime, useRealTrades, executeRealSwap, addTrade]);
   
   return (
     <div className="space-y-6">
@@ -264,6 +567,123 @@ export function VolumeControl() {
             Volume Settings
           </h3>
           
+          {/* Real Trades Toggle */}
+          <div className="p-4 rounded-lg border-2 border-dashed border-slate-700">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-white">Trading Mode</span>
+              </div>
+              <button
+                onClick={() => setUseRealTrades(!useRealTrades)}
+                className={`relative w-14 h-7 rounded-full transition-colors ${
+                  useRealTrades ? 'bg-orange-500' : 'bg-slate-700'
+                }`}
+              >
+                <div className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-transform ${
+                  useRealTrades ? 'translate-x-8' : 'translate-x-1'
+                }`} />
+              </button>
+            </div>
+            <p className={`text-sm ${useRealTrades ? 'text-orange-400' : 'text-slate-500'}`}>
+              {useRealTrades ? '🔴 REAL TRADES - Will spend actual SOL!' : '🟢 Simulation Mode - No real transactions'}
+            </p>
+          </div>
+
+          {/* Jupiter API Key (only for real trades) */}
+          {useRealTrades && (
+            <div className="space-y-2">
+              <label className="text-sm text-slate-400 flex items-center gap-2">
+                <Key className="w-4 h-4" />
+                Jupiter API Key
+              </label>
+              <input
+                type="password"
+                value={jupiterApiKey}
+                onChange={(e) => setJupiterApiKey(e.target.value)}
+                placeholder="Enter your Jupiter API key..."
+                className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-orange-500"
+              />
+              <p className="text-xs text-slate-500">
+                Get a free key at <a href="https://portal.jup.ag" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">portal.jup.ag</a>
+              </p>
+            </div>
+          )}
+
+          {/* Wallet Status */}
+          {useRealTrades && (
+            <div className={`p-4 rounded-lg ${
+              isLocked ? 'bg-red-500/10 border border-red-500/30' : 'bg-emerald-500/10 border border-emerald-500/30'
+            }`}>
+              <div className="flex items-center gap-3 mb-3">
+                {isLocked ? (
+                  <>
+                    <XCircle className="w-5 h-5 text-red-400" />
+                    <div>
+                      <p className="text-sm text-red-400 font-medium">Wallet Locked</p>
+                      <p className="text-xs text-slate-400">Unlock your vault on the Wallets page to trade</p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-5 h-5 text-emerald-400" />
+                    <div>
+                      <p className="text-sm text-emerald-400 font-medium">Wallet Ready</p>
+                      <p className="text-xs text-slate-400">{wallets.length} wallet(s) available</p>
+                    </div>
+                  </>
+                )}
+              </div>
+              {!isLocked && wallets.length > 0 && (
+                <div className="pt-3 border-t border-slate-700/50">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-sm text-slate-400">Available Balance:</span>
+                    <span className="text-lg font-bold text-white">
+                      {(selectedWalletIds.length > 0 
+                        ? wallets.filter(w => selectedWalletIds.includes(w.id)).reduce((sum, w) => sum + (w.balance || 0), 0)
+                        : wallets.reduce((sum, w) => sum + (w.balance || 0), 0)
+                      ).toFixed(4)} SOL
+                    </span>
+                  </div>
+                  
+                  <p className="text-xs text-slate-400 mb-2">Select wallets to use:</p>
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {wallets.map((w, i) => {
+                      const isSelected = selectedWalletIds.includes(w.id);
+                      return (
+                        <label
+                          key={w.id || i}
+                          className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
+                            isSelected ? 'bg-emerald-500/20 border border-emerald-500/30' : 'bg-slate-800/50 hover:bg-slate-800'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedWalletIds(prev => [...prev, w.id]);
+                                } else {
+                                  setSelectedWalletIds(prev => prev.filter(id => id !== w.id));
+                                }
+                              }}
+                              className="w-4 h-4 rounded border-slate-600 text-emerald-500 focus:ring-emerald-500 bg-slate-700"
+                            />
+                            <span className="text-sm text-white">{w.name || `Wallet ${i+1}`}</span>
+                          </div>
+                          <span className="text-sm text-slate-400">{(w.balance || 0).toFixed(4)} SOL</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {selectedWalletIds.length === 0 && (
+                    <p className="text-xs text-yellow-400 mt-2">⚠️ No wallets selected — will use all wallets</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Target Token */}
           <div className="space-y-2">
             <label className="text-sm text-slate-400">Target Token Mint</label>
@@ -380,8 +800,246 @@ export function VolumeControl() {
           )}
         </div>
       </div>
+
+      {/* Health Monitor */}
+      <div className="card">
+        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <Activity className="w-5 h-5 text-emerald-400" />
+          Health Monitor
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className={`p-4 rounded-lg border ${isRunning ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-800 border-slate-700'}`}>
+            <div className="flex items-center gap-2 mb-2">
+              {isRunning ? (
+                <CheckCircle className="w-5 h-5 text-emerald-400" />
+              ) : (
+                <XCircle className="w-5 h-5 text-slate-500" />
+              )}
+              <span className="text-sm text-slate-400">Status</span>
+            </div>
+            <p className={`text-lg font-bold ${isRunning ? 'text-emerald-400' : 'text-slate-500'}`}>
+              {isRunning ? 'RUNNING' : 'STOPPED'}
+            </p>
+          </div>
+          
+          <div className="p-4 rounded-lg bg-slate-800 border border-slate-700">
+            <div className="flex items-center gap-2 mb-2">
+              <Clock className="w-5 h-5 text-blue-400" />
+              <span className="text-sm text-slate-400">Uptime</span>
+            </div>
+            <p className="text-lg font-bold text-white">
+              {startTime ? formatUptime(Date.now() - startTime) : '--:--:--'}
+            </p>
+          </div>
+          
+          <div className="p-4 rounded-lg bg-slate-800 border border-slate-700">
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingUp className="w-5 h-5 text-purple-400" />
+              <span className="text-sm text-slate-400">Rate</span>
+            </div>
+            <p className="text-lg font-bold text-white">
+              {stats.currentRate.toFixed(2)} <span className="text-sm text-slate-400">SOL/hr</span>
+            </p>
+          </div>
+          
+          <div className="p-4 rounded-lg bg-slate-800 border border-slate-700">
+            <div className="flex items-center gap-2 mb-2">
+              <BarChart3 className="w-5 h-5 text-yellow-400" />
+              <span className="text-sm text-slate-400">Success</span>
+            </div>
+            <p className="text-lg font-bold text-white">
+              {stats.swapsExecuted > 0 ? stats.successRate.toFixed(1) : '--'}%
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Wallet Activity Overview */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+            <Wallet className="w-5 h-5 text-blue-400" />
+            Wallet Activity Proof
+          </h3>
+          <span className="text-sm text-slate-500">
+            {new Set(txLogs.map(tx => tx.wallet)).size} active wallets
+          </span>
+        </div>
+
+        {txLogs.length === 0 ? (
+          <div className="text-center py-6 text-slate-500">
+            <Wallet className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p>No wallet activity yet</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Group transactions by wallet */}
+            {Array.from(new Set(txLogs.map(tx => tx.wallet))).map(walletName => {
+              const walletTxs = txLogs.filter(tx => tx.wallet === walletName);
+              const successCount = walletTxs.filter(tx => tx.status === 'success').length;
+              const totalVolume = walletTxs.filter(tx => tx.status === 'success').reduce((sum, tx) => sum + tx.amount, 0);
+              
+              // Find full address if available
+              const matchedWallet = wallets.find(w => 
+                walletName.includes(w.address?.slice(0, 8) || '') || 
+                w.name === walletName.replace(' (sim)', '')
+              );
+              
+              return (
+                <div key={walletName} className="bg-slate-800/50 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold">
+                        {walletName.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="font-medium text-white">{walletName}</p>
+                        {matchedWallet && (
+                          <a
+                            href={`https://solscan.io/account/${matchedWallet.address}${network === 'devnet' ? '?cluster=devnet' : ''}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-400 hover:underline font-mono flex items-center gap-1"
+                          >
+                            {matchedWallet.address.slice(0, 12)}...{matchedWallet.address.slice(-8)}
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm text-emerald-400 font-medium">{totalVolume.toFixed(4)} SOL</p>
+                      <p className="text-xs text-slate-500">{successCount} txs</p>
+                    </div>
+                  </div>
+                  
+                  {/* Recent transactions for this wallet */}
+                  <div className="space-y-1 max-h-32 overflow-y-auto">
+                    {walletTxs.slice(0, 5).map(tx => (
+                      <div key={tx.id} className="flex items-center justify-between py-1.5 px-2 bg-slate-900/50 rounded text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className={tx.type === 'buy' ? 'text-emerald-400' : 'text-red-400'}>
+                            {tx.type === 'buy' ? '↑ BUY' : '↓ SELL'}
+                          </span>
+                          <span className="text-slate-300">{tx.amount} SOL</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`${
+                            tx.status === 'success' ? 'text-emerald-400' : 
+                            tx.status === 'pending' ? 'text-yellow-400' : 'text-red-400'
+                          }`}>
+                            {tx.status === 'success' ? '✓' : tx.status === 'pending' ? '⏳' : '✗'}
+                          </span>
+                          {tx.txHash && tx.status === 'success' && !tx.txHash.startsWith('sim-') ? (
+                            <a
+                              href={`https://solscan.io/tx/${tx.txHash}${network === 'devnet' ? '?cluster=devnet' : ''}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-400 hover:underline"
+                            >
+                              {tx.txHash.slice(0, 8)}...
+                            </a>
+                          ) : (
+                            <span className="text-slate-500">{new Date(tx.timestamp).toLocaleTimeString()}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {walletTxs.length > 5 && (
+                      <p className="text-xs text-slate-500 text-center py-1">+{walletTxs.length - 5} more transactions</p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Full Transaction Log */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+            <Activity className="w-5 h-5 text-emerald-400" />
+            Full Transaction Log
+          </h3>
+          <span className="text-sm text-slate-500">{txLogs.length} total</span>
+        </div>
+        
+        {txLogs.length === 0 ? (
+          <div className="text-center py-8 text-slate-500">
+            <Activity className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p>No transactions yet</p>
+            <p className="text-sm">Start boosting to see activity</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-slate-500 border-b border-slate-700">
+                  <th className="pb-2 font-medium">Time</th>
+                  <th className="pb-2 font-medium">Wallet</th>
+                  <th className="pb-2 font-medium">Type</th>
+                  <th className="pb-2 font-medium">Amount</th>
+                  <th className="pb-2 font-medium">Status</th>
+                  <th className="pb-2 font-medium">TX</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {txLogs.slice(0, 20).map((tx) => (
+                  <tr key={tx.id} className="hover:bg-slate-800/30">
+                    <td className="py-2 text-slate-400">{new Date(tx.timestamp).toLocaleTimeString()}</td>
+                    <td className="py-2 text-slate-300 font-mono text-xs">{tx.wallet}</td>
+                    <td className="py-2">
+                      <span className={`px-2 py-0.5 rounded text-xs ${
+                        tx.type === 'buy' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+                      }`}>
+                        {tx.type.toUpperCase()}
+                      </span>
+                    </td>
+                    <td className="py-2 text-white">{tx.amount} SOL</td>
+                    <td className="py-2">
+                      <span className={`${
+                        tx.status === 'success' ? 'text-emerald-400' : 
+                        tx.status === 'pending' ? 'text-yellow-400' : 'text-red-400'
+                      }`}>
+                        {tx.status}
+                      </span>
+                    </td>
+                    <td className="py-2">
+                      {tx.txHash && tx.status === 'success' && !tx.txHash.startsWith('sim-') ? (
+                        <a
+                          href={`https://solscan.io/tx/${tx.txHash}${network === 'devnet' ? '?cluster=devnet' : ''}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-400 hover:underline flex items-center gap-1"
+                        >
+                          View <ExternalLink className="w-3 h-3" />
+                        </a>
+                      ) : (
+                        <span className="text-slate-500">—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {txLogs.length > 20 && (
+              <p className="text-center text-slate-500 text-sm py-3">Showing 20 of {txLogs.length} transactions</p>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
+}
+
+// Helper function to format uptime
+function formatUptime(ms: number): string {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  return `${hours.toString().padStart(2, '0')}:${(minutes % 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
 }
 
 export default VolumeControl
