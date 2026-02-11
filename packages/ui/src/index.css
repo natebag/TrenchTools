@@ -111,3 +111,52 @@
 .animate-slide-in {
   animation: slide-in 0.3s ease-out;
 }
+
+/* Mobile responsiveness */
+@media (max-width: 640px) {
+  .card {
+    @apply p-4 rounded-lg;
+  }
+  
+  .stat-value {
+    @apply text-xl;
+  }
+  
+  /* Stack buttons on mobile */
+  .btn-stack-mobile {
+    @apply flex-col w-full;
+  }
+  
+  /* Full width inputs on mobile */
+  input, select {
+    @apply text-base; /* Prevents iOS zoom on focus */
+  }
+  
+  /* Smaller text for addresses */
+  .font-mono {
+    @apply text-xs;
+  }
+}
+
+/* Touch-friendly tap targets */
+@media (pointer: coarse) {
+  button, a, .nav-item {
+    min-height: 44px;
+  }
+}
+
+/* Prevent text selection on buttons */
+button {
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+/* Loading skeleton */
+.skeleton {
+  @apply bg-slate-800 animate-pulse rounded;
+}
+
+/* Safe area for notched phones */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
