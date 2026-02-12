@@ -26,6 +26,7 @@ import {
   type Position,
 } from '@trenchsniper/core';
 import { useWallet } from '@/context/WalletContext';
+import { useActiveTokens } from '@/context/ActiveTokensContext';
 
 interface SniperStatus {
   active: boolean;
@@ -42,6 +43,8 @@ export function SniperControl() {
     wallets,
     addActivity,
   } = useWallet();
+  
+  const { addToken } = useActiveTokens();
 
   // Real sniper manager ref
   const managerRef = useRef<SniperGuardManager | null>(null);
@@ -189,6 +192,12 @@ export function SniperControl() {
       addActivity({
         type: 'scan',
         description: `Sniper activated targeting ${localConfig.targetToken.slice(0, 8)}...`,
+      });
+
+      // Add token to active tokens for Detection Dashboard
+      addToken({
+        mint: localConfig.targetToken,
+        source: 'snipe'
       });
 
       setRecentActivity(prev => [{
