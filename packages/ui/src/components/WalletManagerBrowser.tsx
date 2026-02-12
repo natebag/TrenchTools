@@ -26,8 +26,10 @@ import {
   Shield,
 } from 'lucide-react';
 import { useSecureWallet } from '@/hooks/useSecureWallet';
+import { useNetwork } from '@/context/NetworkContext';
 
 export function WalletManagerBrowser() {
+  const { rpcUrl } = useNetwork();
   const {
     wallets,
     isLocked,
@@ -38,12 +40,13 @@ export function WalletManagerBrowser() {
     lock,
     generateWallet,
     generateWallets,
+    importWallet,
     removeWallet,
     refreshBalances,
     exportBackup,
     importBackup,
     clearError,
-  } = useSecureWallet();
+  } = useSecureWallet({ rpcUrl });
 
   // UI State
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +56,7 @@ export function WalletManagerBrowser() {
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [showUnlockModal, setShowUnlockModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showImportKeyModal, setShowImportKeyModal] = useState(false);
   const [showCreateVaultModal, setShowCreateVaultModal] = useState(false);
   
   // Form states
@@ -62,6 +66,8 @@ export function WalletManagerBrowser() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [importData, setImportData] = useState('');
+  const [importPrivateKey, setImportPrivateKey] = useState('');
+  const [importWalletName, setImportWalletName] = useState('Imported Wallet');
 
   // Copy to clipboard helper
   const copyToClipboard = useCallback((text: string, label: string) => {
@@ -182,6 +188,29 @@ export function WalletManagerBrowser() {
     }
   }, [importData, password, importBackup]);
 
+  // Import from private key (JSON array format)
+  const handleImportPrivateKey = useCallback(async () => {
+    if (!importPrivateKey || !password) {
+      setError('Private key and password required');
+      return;
+    }
+
+    try {
+      // Parse the private key - expect JSON array format
+      const keyArray = JSON.parse(importPrivateKey);
+      const secretKey = new Uint8Array(keyArray);
+      
+      await importWallet(secretKey, importWalletName, walletType, password);
+      setShowImportKeyModal(false);
+      setImportPrivateKey('');
+      setImportWalletName('Imported Wallet');
+      setSuccess('Wallet imported!');
+      setTimeout(() => setSuccess(null), 2000);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, [importPrivateKey, importWalletName, walletType, password, importWallet]);
+
   // Clear any errors
   const dismissError = useCallback(() => {
     setError(null);
@@ -298,8 +327,17 @@ export function WalletManagerBrowser() {
               <button
                 onClick={() => setShowImportModal(true)}
                 className="p-2 bg-gray-800 hover:bg-gray-700 rounded-lg"
+                title="Import Backup"
               >
                 <Upload className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setShowImportKeyModal(true)}
+                className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm"
+                title="Import Private Key"
+              >
+                <Shield className="w-4 h-4" />
+                Import Key
               </button>
               <button
                 onClick={lock}
@@ -609,6 +647,70 @@ export function WalletManagerBrowser() {
                 onClick={handleImport}
                 disabled={isLoading || !importData || !password}
                 className="flex-1 px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-lg disabled:opacity-50"
+              >
+                {isLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Import'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Private Key Modal */}
+      {showImportKeyModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-gray-800">
+            <h3 className="text-lg font-bold mb-4">Import Private Key</h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Wallet Name</label>
+                <input
+                  type="text"
+                  value={importWalletName}
+                  onChange={(e) => setImportWalletName(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:border-blue-500 focus:outline-none"
+                  placeholder="My Wallet"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Private Key (JSON Array)</label>
+                <textarea
+                  value={importPrivateKey}
+                  onChange={(e) => setImportPrivateKey(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:border-blue-500 focus:outline-none h-24 font-mono text-xs"
+                  placeholder="[240,5,159,18,73,...]"
+                />
+                <p className="text-xs text-gray-500 mt-1">Paste the secret key as a JSON array of numbers</p>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Vault Password</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:border-blue-500 focus:outline-none"
+                  placeholder="Enter your vault password"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowImportKeyModal(false);
+                  setImportPrivateKey('');
+                  setPassword('');
+                }}
+                className="flex-1 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleImportPrivateKey}
+                disabled={isLoading || !importPrivateKey || !password}
+                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg disabled:opacity-50"
               >
                 {isLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Import'}
               </button>
