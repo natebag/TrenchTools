@@ -10,7 +10,6 @@ import {
   CheckCircle,
   AlertCircle,
   ExternalLink,
-  Wallet,
 } from 'lucide-react';
 import { useSecureWallet } from '@/hooks/useSecureWallet';
 import { useNetwork } from '@/context/NetworkContext';

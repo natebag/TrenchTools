@@ -12,8 +12,6 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  ArrowUpRight,
-  ArrowDownRight,
   Key,
   ExternalLink
 } from 'lucide-react'
@@ -266,7 +264,7 @@ export function VolumeControl() {
     // Filter to selected wallets only, or use all if none selected
     let availableKeypairs = allKeypairs;
     if (selectedWalletIds.length > 0) {
-      availableKeypairs = allKeypairs.filter((kp, idx) => {
+      availableKeypairs = allKeypairs.filter((_kp, idx) => {
         const wallet = wallets[idx];
         return wallet && selectedWalletIds.includes(wallet.id);
       });

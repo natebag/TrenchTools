@@ -3,8 +3,8 @@
  * Uses lightweight-charts for custom charting with trade markers
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { createChart, IChartApi, ISeriesApi, CandlestickData, Time, UTCTimestamp } from 'lightweight-charts';
+import { useState, useEffect, useRef } from 'react';
+import { createChart, IChartApi, ISeriesApi, UTCTimestamp } from 'lightweight-charts';
 import {
   TrendingUp,
   TrendingDown,
@@ -112,7 +112,8 @@ export function TokenChart() {
   };
 
   // Fetch OHLC data (using DexScreener pair data or mock)
-  const fetchOHLCData = async (pairAddress: string) => {
+  // pairAddress reserved for future Birdeye API integration
+  const fetchOHLCData = async (_pairAddress: string) => {
     try {
       // DexScreener doesn't have a public OHLC API, so we'll generate synthetic data
       // based on current price and simulate historical movement

@@ -29,7 +29,7 @@ import { useSecureWallet } from '@/hooks/useSecureWallet';
 import { useNetwork } from '@/context/NetworkContext';
 
 export function WalletManagerBrowser() {
-  const { rpcUrl, network } = useNetwork();
+  const { rpcUrl } = useNetwork();
   const {
     wallets,
     isLocked,

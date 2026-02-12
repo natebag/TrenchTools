@@ -27,7 +27,7 @@ import { ToastProvider } from './Toast'
 import { ErrorBoundary } from './ErrorBoundary'
 import { Dashboard } from './Dashboard'
 import { TreasuryView } from './TreasuryView'
-import { WalletManagerBrowser } from './WalletManagerBrowser'
+// WalletManagerBrowser available if needed
 import { TreasuryWalletManager } from './TreasuryWalletManager'
 import { SniperControl } from './SniperControl'
 import { ShieldScanner } from './ShieldScanner'

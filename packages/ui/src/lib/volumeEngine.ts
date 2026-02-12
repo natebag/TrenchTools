@@ -29,8 +29,9 @@ export interface SwapResult {
 export class VolumeEngine {
   private connection: Connection;
   private jupiterApiKey: string;
-  private isRunning = false;
-  private intervalId: NodeJS.Timeout | null = null;
+  // Reserved for scheduled boosting (future)
+  // private isRunning = false;
+  // private intervalId: NodeJS.Timeout | null = null;
 
   constructor(rpcUrl: string, jupiterApiKey: string) {
     this.connection = new Connection(rpcUrl, 'confirmed');
@@ -100,7 +101,7 @@ export class VolumeEngine {
       });
 
       // Wait for confirmation (with timeout)
-      const confirmation = await Promise.race([
+      await Promise.race([
         this.connection.confirmTransaction(signature, 'confirmed'),
         new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 30000))
       ]);
