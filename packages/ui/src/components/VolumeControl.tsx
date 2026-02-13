@@ -13,18 +13,28 @@ import {
   XCircle,
   Clock,
   Key,
-  ExternalLink
+  ExternalLink,
+  ChevronDown
 } from 'lucide-react'
 import { useSecureWallet } from '@/hooks/useSecureWallet'
 import { useNetwork } from '@/context/NetworkContext'
 import { useActiveTokens } from '@/context/ActiveTokensContext'
 import { useTxHistory } from '@/context/TxHistoryContext'
-import { Connection, VersionedTransaction } from '@solana/web3.js'
+import { 
+  getSwapper, 
+  getQuote, 
+  executeSwap as dexExecuteSwap,
+  DEX_INFO, 
+  KNOWN_MINTS,
+  type DexType, 
+  type DexConfig 
+} from '@/lib/dex'
 
 // Types for Volume Boosting configuration
 interface VolumeConfig {
   enabled: boolean
   targetToken: string
+  selectedDex: DexType
   intensity: 'low' | 'medium' | 'high' | 'aggressive'
   pattern: 'organic' | 'steady' | 'burst' | 'wave'
   dailyTargetSol: number
@@ -49,6 +59,7 @@ const STORAGE_KEY = 'trench_volume_config';
 const defaultConfig: VolumeConfig = {
   enabled: false,
   targetToken: '',
+  selectedDex: 'jupiter',
   intensity: 'medium',
   pattern: 'organic',
   dailyTargetSol: 50,
@@ -209,8 +220,8 @@ interface TransactionLog {
   txHash?: string;
 }
 
-const JUPITER_API_URL = 'https://api.jup.ag/swap/v1';
-const WSOL = 'So11111111111111111111111111111111111111112';
+// Use WSOL from DEX constants
+const WSOL = KNOWN_MINTS.WSOL;
 
 export function VolumeControl() {
   const { rpcUrl, network } = useNetwork();
@@ -254,11 +265,17 @@ export function VolumeControl() {
     }
   }, [jupiterApiKey]);
 
-  // Execute real swap via Jupiter
+  // Execute real swap via selected DEX
   const executeRealSwap = useCallback(async (isBuy: boolean, amountSol: number) => {
     const allKeypairs = getKeypairs();
     if (allKeypairs.length === 0) {
       throw new Error('No wallets available. Unlock your vault first.');
+    }
+
+    // Check if selected DEX is implemented
+    const swapper = getSwapper(config.selectedDex);
+    if (!swapper.isImplemented) {
+      throw new Error(`${swapper.name} is not yet implemented. Please use Jupiter.`);
     }
 
     // Filter to selected wallets only, or use all if none selected
@@ -276,67 +293,38 @@ export function VolumeControl() {
     // Pick a random wallet from available ones
     const walletIndex = Math.floor(Math.random() * availableKeypairs.length);
     const wallet = availableKeypairs[walletIndex];
-    const connection = new Connection(rpcUrl, 'confirmed');
 
     const inputMint = isBuy ? WSOL : config.targetToken;
     const outputMint = isBuy ? config.targetToken : WSOL;
     const amountLamports = Math.floor(amountSol * 1e9);
 
-    // Get quote
-    const quoteUrl = `${JUPITER_API_URL}/quote?` + new URLSearchParams({
+    // DEX config
+    const dexConfig: DexConfig = {
+      rpcUrl,
+      apiKey: jupiterApiKey || undefined,
+      slippageBps: 200, // 2% slippage
+    };
+
+    // Get quote from selected DEX
+    const quote = await getQuote(
+      config.selectedDex,
       inputMint,
       outputMint,
-      amount: String(amountLamports),
-      slippageBps: '200' // 2% slippage for safety
-    });
+      amountLamports,
+      dexConfig
+    );
 
-    const quoteResp = await fetch(quoteUrl, {
-      headers: { 'x-api-key': jupiterApiKey }
-    });
+    // Execute swap
+    const result = await dexExecuteSwap(quote, wallet, dexConfig);
 
-    if (!quoteResp.ok) {
-      throw new Error(`Quote failed: ${quoteResp.status}`);
+    if (!result.success) {
+      throw new Error(result.error || 'Swap failed');
     }
 
-    const quote = await quoteResp.json();
-
-    // Get swap transaction
-    const swapResp = await fetch(`${JUPITER_API_URL}/swap`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': jupiterApiKey
-      },
-      body: JSON.stringify({
-        quoteResponse: quote,
-        userPublicKey: wallet.publicKey.toBase58(),
-        wrapAndUnwrapSol: true,
-        dynamicComputeUnitLimit: true,
-        prioritizationFeeLamports: 'auto'
-      })
-    });
-
-    if (!swapResp.ok) {
-      throw new Error(`Swap failed: ${swapResp.status}`);
-    }
-
-    const swapResult = await swapResp.json();
-
-    // Sign and send
-    const swapTxBuf = Buffer.from(swapResult.swapTransaction, 'base64');
-    const tx = VersionedTransaction.deserialize(swapTxBuf);
-    tx.sign([wallet]);
-
-    const signature = await connection.sendTransaction(tx, {
-      skipPreflight: false,
-      maxRetries: 3
-    });
-
-    // Don't wait for full confirmation to keep it fast
     return {
       success: true,
-      txHash: signature,
-      wallet: wallet.publicKey.toBase58().slice(0, 8) + '...'
+      txHash: result.txHash,
+      wallet: result.wallet
     };
   }, [getKeypairs, rpcUrl, jupiterApiKey, config, selectedWalletIds, wallets]);
 
@@ -587,23 +575,67 @@ export function VolumeControl() {
             </p>
           </div>
 
-          {/* Jupiter API Key (only for real trades) */}
+          {/* DEX Selector */}
+          <div className="space-y-2">
+            <label className="text-sm text-slate-400 flex items-center gap-2">
+              <Activity className="w-4 h-4" />
+              DEX / Exchange
+            </label>
+            <div className="relative">
+              <select
+                value={config.selectedDex}
+                onChange={(e) => updateConfig({ selectedDex: e.target.value as DexType })}
+                className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white appearance-none cursor-pointer focus:outline-none focus:border-emerald-500 pr-10"
+              >
+                {(Object.keys(DEX_INFO) as DexType[]).map((dexType) => {
+                  const info = DEX_INFO[dexType];
+                  return (
+                    <option key={dexType} value={dexType}>
+                      {info.name} {!info.isImplemented ? '(Coming Soon)' : ''}
+                    </option>
+                  );
+                })}
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <div 
+                className="w-3 h-3 rounded-full" 
+                style={{ backgroundColor: DEX_INFO[config.selectedDex].color }}
+              />
+              <p className="text-xs text-slate-500">
+                {DEX_INFO[config.selectedDex].description}
+              </p>
+            </div>
+            {!DEX_INFO[config.selectedDex].isImplemented && (
+              <div className="p-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg mt-2">
+                <p className="text-xs text-yellow-400">
+                  ⚠️ {DEX_INFO[config.selectedDex].name} is not yet implemented. 
+                  Real trades will fail. Use Jupiter for live trading.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* API Key (only for real trades) */}
           {useRealTrades && (
             <div className="space-y-2">
               <label className="text-sm text-slate-400 flex items-center gap-2">
                 <Key className="w-4 h-4" />
-                Jupiter API Key
+                {config.selectedDex === 'jupiter' ? 'Jupiter API Key' : 'API Key (optional)'}
               </label>
               <input
                 type="password"
                 value={jupiterApiKey}
                 onChange={(e) => setJupiterApiKey(e.target.value)}
-                placeholder="Enter your Jupiter API key..."
+                placeholder={config.selectedDex === 'jupiter' ? 'Enter your Jupiter API key...' : 'API key if required...'}
                 className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-orange-500"
               />
-              <p className="text-xs text-slate-500">
-                Get a free key at <a href="https://portal.jup.ag" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">portal.jup.ag</a>
-              </p>
+              {config.selectedDex === 'jupiter' && (
+                <p className="text-xs text-slate-500">
+                  Get a free key at <a href="https://portal.jup.ag" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">portal.jup.ag</a>
+                </p>
+              )}
             </div>
           )}
 
@@ -801,10 +833,21 @@ export function VolumeControl() {
 
       {/* Health Monitor */}
       <div className="card">
-        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <Activity className="w-5 h-5 text-emerald-400" />
-          Health Monitor
-        </h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+            <Activity className="w-5 h-5 text-emerald-400" />
+            Health Monitor
+          </h3>
+          <div className="flex items-center gap-2">
+            <div 
+              className="w-2 h-2 rounded-full" 
+              style={{ backgroundColor: DEX_INFO[config.selectedDex].color }}
+            />
+            <span className="text-sm text-slate-400">
+              via {DEX_INFO[config.selectedDex].name}
+            </span>
+          </div>
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className={`p-4 rounded-lg border ${isRunning ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-800 border-slate-700'}`}>
             <div className="flex items-center gap-2 mb-2">

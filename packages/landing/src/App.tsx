@@ -1,0 +1,467 @@
+import {
+  Zap,
+  Shield,
+  BarChart3,
+  Wallet,
+  Github,
+  Twitter,
+  ArrowRight,
+  Check,
+  Terminal,
+  ExternalLink,
+  Crosshair,
+  TrendingUp,
+  Eye,
+} from 'lucide-react'
+
+function App() {
+  return (
+    <div className="min-h-screen bg-slate-950">
+      {/* Navigation */}
+      <nav className="fixed top-0 left-0 right-0 z-50 glass">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-2">
+              <Crosshair className="w-8 h-8 text-emerald-500" />
+              <span className="text-xl font-bold">TrenchSniper OS</span>
+            </div>
+            <div className="hidden md:flex items-center gap-8">
+              <a href="#features" className="text-slate-400 hover:text-white transition-colors">Features</a>
+              <a href="#how-it-works" className="text-slate-400 hover:text-white transition-colors">How it Works</a>
+              <a href="#dashboard" className="text-slate-400 hover:text-white transition-colors">Dashboard</a>
+              <a
+                href="https://github.com/natebag/TrenchSniper-OS"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-lg transition-colors"
+              >
+                <Github className="w-4 h-4" />
+                Star on GitHub
+              </a>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      {/* Hero Section */}
+      <section className="pt-32 pb-20 px-4 relative overflow-hidden">
+        {/* Background gradient */}
+        <div className="absolute inset-0 bg-gradient-to-b from-emerald-900/20 via-slate-950 to-slate-950" />
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 w-[800px] h-[600px] bg-emerald-500/10 rounded-full blur-3xl" />
+        
+        <div className="max-w-7xl mx-auto relative z-10">
+          <div className="text-center animate-fade-in">
+            <div className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 rounded-full px-4 py-1.5 mb-6">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span className="text-emerald-400 text-sm font-medium">Open Source & Free Forever</span>
+            </div>
+            
+            <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold mb-6 leading-tight">
+              <span className="gradient-text">TrenchSniper OS</span>
+              <br />
+              <span className="text-white">Solana Market Making Toolkit</span>
+            </h1>
+            
+            <p className="text-xl text-slate-400 max-w-3xl mx-auto mb-10">
+              The open-source alternative to proprietary Solana tools. Volume boosting, 
+              detection systems, real-time charts, and treasury management — all in one powerful toolkit.
+            </p>
+            
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <a
+                href="https://github.com/natebag/TrenchSniper-OS"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 px-8 py-4 rounded-xl text-lg font-semibold transition-all hover:scale-105 animate-pulse-glow"
+              >
+                <Github className="w-5 h-5" />
+                Get Started
+                <ArrowRight className="w-5 h-5" />
+              </a>
+              <a
+                href="#dashboard"
+                className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 px-8 py-4 rounded-xl text-lg font-semibold transition-all hover:scale-105"
+              >
+                View Demo
+              </a>
+            </div>
+
+            <div className="flex items-center justify-center gap-8 mt-12 text-slate-500">
+              <div className="flex items-center gap-2">
+                <Check className="w-5 h-5 text-emerald-500" />
+                <span>100% Open Source</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Check className="w-5 h-5 text-emerald-500" />
+                <span>Self-Hosted</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Check className="w-5 h-5 text-emerald-500" />
+                <span>No Fees</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Features Section */}
+      <section id="features" className="py-20 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold mb-4">Everything You Need</h2>
+            <p className="text-xl text-slate-400">Powerful features for serious Solana market makers</p>
+          </div>
+          
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <FeatureCard
+              icon={<Zap className="w-8 h-8" />}
+              title="Volume Boosting"
+              description="Automated volume generation with configurable patterns, timing, and wallet distribution."
+            />
+            <FeatureCard
+              icon={<Eye className="w-8 h-8" />}
+              title="Detection Systems"
+              description="Real-time monitoring to detect bots, snipers, and suspicious trading patterns."
+            />
+            <FeatureCard
+              icon={<BarChart3 className="w-8 h-8" />}
+              title="Live Charts"
+              description="Real-time price charts, volume analysis, and market depth visualization."
+            />
+            <FeatureCard
+              icon={<Wallet className="w-8 h-8" />}
+              title="Treasury Management"
+              description="Multi-wallet management, automatic fund distribution, and balance tracking."
+            />
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-6 mt-6">
+            <FeatureCard
+              icon={<Shield className="w-8 h-8" />}
+              title="Security First"
+              description="Local key storage, encrypted configs, and no external API dependencies."
+            />
+            <FeatureCard
+              icon={<Terminal className="w-8 h-8" />}
+              title="Developer Friendly"
+              description="TypeScript SDK, REST API, WebSocket streams, and extensive documentation."
+            />
+            <FeatureCard
+              icon={<TrendingUp className="w-8 h-8" />}
+              title="Analytics Dashboard"
+              description="Track performance, analyze trades, and export detailed reports."
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* How It Works Section */}
+      <section id="how-it-works" className="py-20 px-4 bg-slate-900/50">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold mb-4">Get Started in Minutes</h2>
+            <p className="text-xl text-slate-400">Three simple steps to launch your market making operations</p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            <StepCard
+              number="01"
+              title="Clone & Configure"
+              description="Clone the repo, install dependencies, and configure your environment with your RPC endpoints and wallet keys."
+              code="git clone https://github.com/natebag/TrenchSniper-OS && pnpm install"
+            />
+            <StepCard
+              number="02"
+              title="Set Up Wallets"
+              description="Import or generate wallets, configure your treasury, and set up automatic fund distribution rules."
+              code="pnpm run setup:wallets"
+            />
+            <StepCard
+              number="03"
+              title="Launch Dashboard"
+              description="Start the dashboard, connect to Solana mainnet or devnet, and begin your market making operations."
+              code="pnpm run dev"
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Dashboard Preview Section */}
+      <section id="dashboard" className="py-20 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold mb-4">Powerful Dashboard</h2>
+            <p className="text-xl text-slate-400">Monitor everything from a single interface</p>
+          </div>
+
+          <div className="relative">
+            {/* Dashboard Mockup */}
+            <div className="glass rounded-2xl p-1 shadow-2xl shadow-emerald-500/10">
+              <div className="bg-slate-900 rounded-xl overflow-hidden">
+                {/* Window header */}
+                <div className="flex items-center gap-2 px-4 py-3 bg-slate-800 border-b border-slate-700">
+                  <div className="flex gap-2">
+                    <div className="w-3 h-3 rounded-full bg-red-500" />
+                    <div className="w-3 h-3 rounded-full bg-yellow-500" />
+                    <div className="w-3 h-3 rounded-full bg-green-500" />
+                  </div>
+                  <div className="flex-1 text-center text-sm text-slate-500">TrenchSniper OS Dashboard</div>
+                </div>
+                
+                {/* Dashboard content mockup */}
+                <div className="p-6 grid grid-cols-12 gap-4 min-h-[500px]">
+                  {/* Sidebar */}
+                  <div className="col-span-2 space-y-3">
+                    {['Dashboard', 'Volume', 'Detection', 'Treasury', 'Settings'].map((item, i) => (
+                      <div
+                        key={item}
+                        className={`px-3 py-2 rounded-lg text-sm ${i === 0 ? 'bg-emerald-500/20 text-emerald-400' : 'text-slate-500'}`}
+                      >
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Main content */}
+                  <div className="col-span-10 space-y-4">
+                    {/* Stats row */}
+                    <div className="grid grid-cols-4 gap-4">
+                      {[
+                        { label: 'Total Volume', value: '2.4M SOL', change: '+12.5%' },
+                        { label: 'Active Wallets', value: '156', change: '+8' },
+                        { label: 'Detection Alerts', value: '3', change: '-2' },
+                        { label: 'Treasury Balance', value: '45.2 SOL', change: '+1.2' },
+                      ].map((stat) => (
+                        <div key={stat.label} className="bg-slate-800/50 rounded-lg p-4">
+                          <div className="text-slate-500 text-sm">{stat.label}</div>
+                          <div className="text-2xl font-bold mt-1">{stat.value}</div>
+                          <div className="text-emerald-400 text-sm">{stat.change}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Chart mockup */}
+                    <div className="bg-slate-800/50 rounded-lg p-4 h-64">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="font-semibold">Volume Over Time</span>
+                        <div className="flex gap-2 text-sm">
+                          <span className="px-2 py-1 bg-emerald-500/20 text-emerald-400 rounded">24H</span>
+                          <span className="px-2 py-1 text-slate-500">7D</span>
+                          <span className="px-2 py-1 text-slate-500">30D</span>
+                        </div>
+                      </div>
+                      <div className="h-40 flex items-end gap-1">
+                        {[40, 65, 45, 80, 55, 90, 70, 85, 60, 75, 95, 82, 68, 73, 88, 76, 92, 85, 78, 90].map((h, i) => (
+                          <div
+                            key={i}
+                            className="flex-1 bg-gradient-to-t from-emerald-600 to-emerald-400 rounded-t opacity-80 hover:opacity-100 transition-opacity"
+                            style={{ height: `${h}%` }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Activity table mockup */}
+                    <div className="bg-slate-800/50 rounded-lg p-4">
+                      <div className="font-semibold mb-4">Recent Activity</div>
+                      <div className="space-y-2">
+                        {[
+                          { action: 'Volume boost completed', time: '2 min ago', status: 'success' },
+                          { action: 'Wallet rebalanced', time: '5 min ago', status: 'success' },
+                          { action: 'Sniper detected', time: '12 min ago', status: 'warning' },
+                        ].map((activity, i) => (
+                          <div key={i} className="flex items-center justify-between py-2 border-b border-slate-700 last:border-0">
+                            <span className="text-slate-300">{activity.action}</span>
+                            <div className="flex items-center gap-4">
+                              <span className="text-slate-500 text-sm">{activity.time}</span>
+                              <span className={`w-2 h-2 rounded-full ${activity.status === 'success' ? 'bg-emerald-500' : 'bg-yellow-500'}`} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Open Source Section */}
+      <section className="py-20 px-4 bg-gradient-to-b from-slate-950 to-emerald-950/20">
+        <div className="max-w-4xl mx-auto text-center">
+          <Github className="w-16 h-16 mx-auto mb-6 text-emerald-500" />
+          <h2 className="text-4xl font-bold mb-4">Open Source Forever</h2>
+          <p className="text-xl text-slate-400 mb-8">
+            TrenchSniper OS is 100% open source under the MIT license. No hidden fees, no token gates, 
+            no VC bullshit. Just powerful tools for the community, by the community.
+          </p>
+          
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
+            <a
+              href="https://github.com/natebag/TrenchSniper-OS"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 bg-white text-slate-900 hover:bg-slate-100 px-8 py-4 rounded-xl text-lg font-semibold transition-all hover:scale-105"
+            >
+              <Github className="w-5 h-5" />
+              View on GitHub
+              <ExternalLink className="w-4 h-4" />
+            </a>
+            <a
+              href="https://github.com/natebag/TrenchSniper-OS/issues"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 px-8 py-4 rounded-xl text-lg font-semibold transition-all hover:scale-105"
+            >
+              Report Issues
+            </a>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8 text-left">
+            <div className="glass rounded-xl p-6">
+              <h3 className="font-semibold text-lg mb-2">Contribute</h3>
+              <p className="text-slate-400">
+                PRs welcome! Check out our contributing guide and help make TrenchSniper even better.
+              </p>
+            </div>
+            <div className="glass rounded-xl p-6">
+              <h3 className="font-semibold text-lg mb-2">Self-Host</h3>
+              <p className="text-slate-400">
+                Run on your own infrastructure. Your keys, your data, your rules. No external dependencies.
+              </p>
+            </div>
+            <div className="glass rounded-xl p-6">
+              <h3 className="font-semibold text-lg mb-2">MIT License</h3>
+              <p className="text-slate-400">
+                Fork it, modify it, sell it — do whatever you want. That's the beauty of open source.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="py-12 px-4 border-t border-slate-800">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid md:grid-cols-4 gap-8 mb-12">
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <Crosshair className="w-6 h-6 text-emerald-500" />
+                <span className="text-lg font-bold">TrenchSniper OS</span>
+              </div>
+              <p className="text-slate-400 text-sm">
+                Open-source Solana market making toolkit. Built for degens, by degens.
+              </p>
+            </div>
+            
+            <div>
+              <h4 className="font-semibold mb-4">Product</h4>
+              <ul className="space-y-2 text-slate-400">
+                <li><a href="#features" className="hover:text-white transition-colors">Features</a></li>
+                <li><a href="#how-it-works" className="hover:text-white transition-colors">How it Works</a></li>
+                <li><a href="#dashboard" className="hover:text-white transition-colors">Dashboard</a></li>
+              </ul>
+            </div>
+            
+            <div>
+              <h4 className="font-semibold mb-4">Resources</h4>
+              <ul className="space-y-2 text-slate-400">
+                <li>
+                  <a href="https://github.com/natebag/TrenchSniper-OS" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                    GitHub
+                  </a>
+                </li>
+                <li>
+                  <a href="https://github.com/natebag/TrenchSniper-OS#readme" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                    Documentation
+                  </a>
+                </li>
+                <li>
+                  <a href="https://github.com/natebag/TrenchSniper-OS/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                    Contributing
+                  </a>
+                </li>
+              </ul>
+            </div>
+            
+            <div>
+              <h4 className="font-semibold mb-4">Community</h4>
+              <div className="flex gap-4">
+                <a
+                  href="https://github.com/natebag/TrenchSniper-OS"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-10 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center transition-colors"
+                >
+                  <Github className="w-5 h-5" />
+                </a>
+                <a
+                  href="https://twitter.com/trenchsniper"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-10 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center transition-colors"
+                >
+                  <Twitter className="w-5 h-5" />
+                </a>
+              </div>
+            </div>
+          </div>
+          
+          <div className="pt-8 border-t border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4">
+            <p className="text-slate-500 text-sm">
+              © {new Date().getFullYear()} TrenchSniper OS. Open source under MIT License.
+            </p>
+            <p className="text-slate-500 text-sm">
+              Made with ❤️ for the Solana community
+            </p>
+          </div>
+        </div>
+      </footer>
+    </div>
+  )
+}
+
+interface FeatureCardProps {
+  icon: React.ReactNode
+  title: string
+  description: string
+}
+
+function FeatureCard({ icon, title, description }: FeatureCardProps) {
+  return (
+    <div className="glass rounded-xl p-6 hover:border-emerald-500/50 transition-all group">
+      <div className="w-14 h-14 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500 mb-4 group-hover:scale-110 transition-transform">
+        {icon}
+      </div>
+      <h3 className="text-xl font-semibold mb-2">{title}</h3>
+      <p className="text-slate-400">{description}</p>
+    </div>
+  )
+}
+
+interface StepCardProps {
+  number: string
+  title: string
+  description: string
+  code: string
+}
+
+function StepCard({ number, title, description, code }: StepCardProps) {
+  return (
+    <div className="relative">
+      <div className="text-6xl font-bold text-emerald-500/20 mb-4">{number}</div>
+      <h3 className="text-xl font-semibold mb-2">{title}</h3>
+      <p className="text-slate-400 mb-4">{description}</p>
+      <div className="bg-slate-800 rounded-lg p-3 font-mono text-sm text-emerald-400 overflow-x-auto">
+        <code>{code}</code>
+      </div>
+    </div>
+  )
+}
+
+export default App
