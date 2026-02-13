@@ -17,12 +17,15 @@ import {
   Copy,
   ArrowDown,
   ArrowUp,
-  Plus
+  Plus,
+  Fish
 } from 'lucide-react'
 import { WalletProvider } from '@/context/WalletContext'
 import { NetworkProvider, useNetwork } from '@/context/NetworkContext'
 import { ActiveTokensProvider } from '@/context/ActiveTokensContext'
 import { TxHistoryProvider } from '@/context/TxHistoryContext'
+import { PnLProvider } from '@/context/PnLContext'
+import { WhaleProvider } from '@/context/WhaleContext'
 import { ToastProvider } from './Toast'
 import { ErrorBoundary } from './ErrorBoundary'
 import { Dashboard } from './Dashboard'
@@ -38,6 +41,7 @@ import { BotManager } from './BotManager'
 import { DetectionDashboard } from './DetectionDashboard'
 import { VolumeControl } from './VolumeControl'
 import { TokenChart } from './TokenChart'
+import { WhaleAlerts } from './WhaleAlerts'
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: Activity, description: 'Overview & quick actions' },
@@ -45,6 +49,7 @@ const navItems = [
   { path: '/wallets', label: 'Wallets', icon: Wallet, description: 'HD wallet management' },
   { path: '/snipe', label: 'Sniper', icon: Target, description: 'Token sniping control' },
   { path: '/shield', label: 'Shield', icon: Shield, description: 'Security scanner' },
+  { path: '/whales', label: 'Whales', icon: Fish, description: 'Whale alerts' },
   { path: '/pnl', label: 'P&L', icon: LineChart, description: 'Portfolio analytics' },
   { path: '/activity', label: 'Activity', icon: Activity, description: 'Generate fake tx history' },
   { path: '/bots', label: 'Bots', icon: Bot, description: 'Market maker bots' },
@@ -429,6 +434,7 @@ function AppContent() {
       case '/wallets': return <TreasuryWalletManager />
       case '/snipe': return <SniperControl />
       case '/shield': return <ShieldScanner />
+      case '/whales': return <WhaleAlerts />
       case '/pnl': return <PnLCharts />
       case '/activity': return <ActivityGenerator />
       case '/bots': return <BotManager />
@@ -464,9 +470,13 @@ export function DashboardLayout() {
         <WalletProvider>
           <ActiveTokensProvider>
             <TxHistoryProvider>
-              <ToastProvider>
-                <AppContent />
-              </ToastProvider>
+              <PnLProvider>
+                <WhaleProvider>
+                  <ToastProvider>
+                    <AppContent />
+                  </ToastProvider>
+                </WhaleProvider>
+              </PnLProvider>
             </TxHistoryProvider>
           </ActiveTokensProvider>
         </WalletProvider>
