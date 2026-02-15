@@ -3,7 +3,7 @@
  * Treasury wallet at top with linked sub-wallets below
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   Wallet,
   Lock,
@@ -21,10 +21,16 @@ import {
   Zap,
   History,
   ExternalLink,
+  ChevronDown,
+  ChevronUp,
+  Coins,
+  Key,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { useSecureWallet } from '@/hooks/useSecureWallet';
 import { useNetwork } from '@/context/NetworkContext';
-import { Connection, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL, ParsedTransactionWithMeta } from '@solana/web3.js';
+import { Connection, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL, ParsedTransactionWithMeta, VersionedTransaction } from '@solana/web3.js';
 
 // Transaction history types
 interface TransactionInfo {
@@ -41,6 +47,48 @@ interface TxHistoryCache {
     fetchedAt: number;
   };
 }
+
+interface WalletTokenHolding {
+  mint: string;
+  amountRaw: string;
+  amountUi: number;
+  decimals: number;
+}
+
+interface WalletHoldingsByWallet {
+  [walletId: string]: WalletTokenHolding[];
+}
+
+interface WalletHoldingsLoadingByWallet {
+  [walletId: string]: boolean;
+}
+
+interface ExpandedWalletsState {
+  [walletId: string]: boolean;
+}
+
+interface PendingSellState {
+  walletId: string;
+  walletName: string;
+  walletAddress: string;
+  mint: string;
+  amountRaw: string;
+  amountUi: number;
+  decimals: number;
+}
+
+interface PendingPrivateKeyExportState {
+  walletId: string;
+  walletName: string;
+  walletAddress: string;
+  secretKeyJson: string;
+}
+
+const CACHE_TTL = 60000; // 1 minute cache
+const RENT_RESERVE = 0.005; // SOL to leave for rent exemption
+const SPL_TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+const WSOL_MINT = 'So11111111111111111111111111111111111111112';
+const JUPITER_API_URL = 'https://api.jup.ag/swap/v1';
 
 export function TreasuryWalletManager() {
   const { rpcUrl, network } = useNetwork();
@@ -81,17 +129,359 @@ export function TreasuryWalletManager() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyTransactions, setHistoryTransactions] = useState<TransactionInfo[]>([]);
   const txHistoryCache = useRef<TxHistoryCache>({});
-  const CACHE_TTL = 60000; // 1 minute cache
   const [isBulkFunding, setIsBulkFunding] = useState(false);
   const [isSweeping, setIsSweeping] = useState(false);
   const [sweepingWalletId, setSweepingWalletId] = useState<string | null>(null);
+  const [walletHoldings, setWalletHoldings] = useState<WalletHoldingsByWallet>({});
+  const [walletHoldingsLoading, setWalletHoldingsLoading] = useState<WalletHoldingsLoadingByWallet>({});
+  const [expandedWallets, setExpandedWallets] = useState<ExpandedWalletsState>({});
+  const [pendingSell, setPendingSell] = useState<PendingSellState | null>(null);
+  const [isSelling, setIsSelling] = useState(false);
+  const [sellLoadingByRow, setSellLoadingByRow] = useState<Record<string, boolean>>({});
+  const [sellTxHash, setSellTxHash] = useState<string | null>(null);
+  const [pendingPrivateKeyExport, setPendingPrivateKeyExport] = useState<PendingPrivateKeyExportState | null>(null);
+  const [isPrivateKeyVisible, setIsPrivateKeyVisible] = useState(false);
 
-  // Constants
-  const RENT_RESERVE = 0.005; // SOL to leave for rent exemption
+  const walletAddressKey = wallets.map(w => w.address).join('|');
 
   // Get treasury wallet (first treasury type, or first wallet)
   const treasuryWallet = wallets.find(w => w.type === 'treasury') || wallets[0];
   const subWallets = wallets.filter(w => w.id !== treasuryWallet?.id);
+
+  const showSuccess = useCallback((message: string, txHash?: string) => {
+    setSuccess(message);
+    setSellTxHash(txHash ?? null);
+  }, []);
+
+  const clearFeedback = useCallback(() => {
+    setError(null);
+    setSuccess(null);
+    setSellTxHash(null);
+  }, []);
+
+  const getWalletSigner = useCallback((walletAddress: string) => {
+    const keypairs = getKeypairs();
+    return keypairs.find(kp => kp.publicKey.toBase58() === walletAddress);
+  }, [getKeypairs]);
+
+  const fetchWalletHoldings = useCallback(async (wallet: (typeof wallets)[number]) => {
+    setWalletHoldingsLoading(prev => ({ ...prev, [wallet.id]: true }));
+
+    try {
+      const connection = new Connection(rpcUrl, 'confirmed');
+      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+        new PublicKey(wallet.address),
+        { programId: SPL_TOKEN_PROGRAM_ID }
+      );
+
+      const holdings = tokenAccounts.value
+        .map((account) => {
+          const info = account.account.data.parsed.info;
+          const tokenAmount = info.tokenAmount;
+          const amountRaw = tokenAmount.amount as string;
+          const amountUi = tokenAmount.uiAmount ?? parseFloat(tokenAmount.uiAmountString || '0');
+          const decimals = tokenAmount.decimals as number;
+
+          return {
+            mint: info.mint as string,
+            amountRaw,
+            amountUi: Number.isFinite(amountUi) ? amountUi : 0,
+            decimals,
+          } as WalletTokenHolding;
+        })
+        .filter(h => {
+          try {
+            return BigInt(h.amountRaw) > 0n;
+          } catch {
+            return h.amountUi > 0;
+          }
+        })
+        .sort((a, b) => b.amountUi - a.amountUi);
+
+      setWalletHoldings(prev => ({ ...prev, [wallet.id]: holdings }));
+    } catch (err) {
+      console.error(`Failed to fetch token holdings for ${wallet.name}:`, err);
+      setWalletHoldings(prev => ({ ...prev, [wallet.id]: [] }));
+    } finally {
+      setWalletHoldingsLoading(prev => ({ ...prev, [wallet.id]: false }));
+    }
+  }, [rpcUrl]);
+
+  const refreshAllWalletHoldings = useCallback(async () => {
+    if (isLocked || wallets.length === 0) {
+      setWalletHoldings({});
+      setWalletHoldingsLoading({});
+      return;
+    }
+
+    await Promise.all(wallets.map(wallet => fetchWalletHoldings(wallet)));
+  }, [isLocked, wallets, fetchWalletHoldings]);
+
+  const formatTokenAmount = useCallback((amount: number) => {
+    if (!Number.isFinite(amount)) return '0';
+    if (amount >= 1_000_000) {
+      return amount.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    }
+    return amount.toLocaleString(undefined, { maximumFractionDigits: 6 });
+  }, []);
+
+  const toggleWalletExpanded = useCallback((walletId: string) => {
+    setExpandedWallets(prev => ({ ...prev, [walletId]: !prev[walletId] }));
+  }, []);
+
+  const handleRefreshAll = useCallback(async () => {
+    clearFeedback();
+    await Promise.all([refreshBalances(), refreshAllWalletHoldings()]);
+  }, [clearFeedback, refreshBalances, refreshAllWalletHoldings]);
+
+  const handleOpenSellConfirm = useCallback((
+    wallet: (typeof wallets)[number],
+    token: WalletTokenHolding
+  ) => {
+    const jupiterApiKey = localStorage.getItem('jupiter_api_key') || '';
+    if (!jupiterApiKey) {
+      setError('Jupiter API key missing. Set it in /volume to enable token sells.');
+      return;
+    }
+
+    clearFeedback();
+    setPendingSell({
+      walletId: wallet.id,
+      walletName: wallet.name,
+      walletAddress: wallet.address,
+      mint: token.mint,
+      amountRaw: token.amountRaw,
+      amountUi: token.amountUi,
+      decimals: token.decimals,
+    });
+  }, [clearFeedback]);
+
+  const handleOpenPrivateKeyExport = useCallback((wallet: (typeof wallets)[number]) => {
+    clearFeedback();
+    const signer = getWalletSigner(wallet.address);
+    if (!signer) {
+      setError('Wallet signer not found. Unlock your vault and retry.');
+      return;
+    }
+
+    setPendingPrivateKeyExport({
+      walletId: wallet.id,
+      walletName: wallet.name,
+      walletAddress: wallet.address,
+      secretKeyJson: JSON.stringify(Array.from(signer.secretKey)),
+    });
+    setIsPrivateKeyVisible(false);
+  }, [clearFeedback, getWalletSigner]);
+
+  const handleConfirmSell = useCallback(async () => {
+    if (!pendingSell) return;
+
+    const rowKey = `${pendingSell.walletId}:${pendingSell.mint}`;
+    const signer = getWalletSigner(pendingSell.walletAddress);
+    if (!signer) {
+      setError('Wallet signer not found. Unlock your vault and retry.');
+      setPendingSell(null);
+      return;
+    }
+
+    const jupiterApiKey = localStorage.getItem('jupiter_api_key') || '';
+    if (!jupiterApiKey) {
+      setError('Jupiter API key missing. Set it in /volume to enable token sells.');
+      setPendingSell(null);
+      return;
+    }
+
+    setIsSelling(true);
+    setSellLoadingByRow(prev => ({ ...prev, [rowKey]: true }));
+    clearFeedback();
+
+    try {
+      const quoteUrl = `${JUPITER_API_URL}/quote?` + new URLSearchParams({
+        inputMint: pendingSell.mint,
+        outputMint: WSOL_MINT,
+        amount: pendingSell.amountRaw,
+        slippageBps: '200',
+      });
+
+      const quoteResponse = await fetch(quoteUrl, {
+        headers: { 'x-api-key': jupiterApiKey },
+      });
+
+      if (!quoteResponse.ok) {
+        const errorText = await quoteResponse.text();
+        throw new Error(`Jupiter quote failed (${quoteResponse.status}): ${errorText}`);
+      }
+
+      const quote = await quoteResponse.json();
+
+      const swapResponse = await fetch(`${JUPITER_API_URL}/swap`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': jupiterApiKey,
+        },
+        body: JSON.stringify({
+          quoteResponse: quote,
+          userPublicKey: signer.publicKey.toBase58(),
+          wrapAndUnwrapSol: true,
+          dynamicComputeUnitLimit: true,
+          prioritizationFeeLamports: 'auto',
+        }),
+      });
+
+      if (!swapResponse.ok) {
+        const errorText = await swapResponse.text();
+        throw new Error(`Jupiter swap failed (${swapResponse.status}): ${errorText}`);
+      }
+
+      const swapPayload = await swapResponse.json();
+      const transactionBuffer = Buffer.from(swapPayload.swapTransaction, 'base64');
+      const transaction = VersionedTransaction.deserialize(transactionBuffer);
+      transaction.sign([signer]);
+
+      const connection = new Connection(rpcUrl, 'confirmed');
+      const signature = await connection.sendTransaction(transaction, {
+        skipPreflight: false,
+        maxRetries: 3,
+      });
+      await connection.confirmTransaction(signature, 'confirmed');
+
+      showSuccess(`Sell Max successful for ${pendingSell.walletName}`, signature);
+      setPendingSell(null);
+
+      await Promise.all([refreshAllWalletHoldings(), refreshBalances()]);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown sell error';
+      setError(`${message}. If balance changed, refresh and retry.`);
+      await refreshAllWalletHoldings();
+    } finally {
+      setIsSelling(false);
+      setSellLoadingByRow(prev => ({ ...prev, [rowKey]: false }));
+    }
+  }, [
+    pendingSell,
+    getWalletSigner,
+    clearFeedback,
+    rpcUrl,
+    refreshAllWalletHoldings,
+    refreshBalances,
+    showSuccess,
+  ]);
+
+  const renderWalletTokenSection = useCallback((wallet: (typeof wallets)[number]) => {
+    const tokens = walletHoldings[wallet.id] || [];
+    const isExpanded = !!expandedWallets[wallet.id];
+    const isLoadingTokens = !!walletHoldingsLoading[wallet.id];
+
+    return (
+      <div className="mt-4 pt-4 border-t border-slate-700/50">
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => toggleWalletExpanded(wallet.id)}
+            className="flex items-center gap-2 text-sm text-slate-300 hover:text-white"
+          >
+            <Coins className="w-4 h-4 text-amber-400" />
+            <span>Tokens: {tokens.length}</span>
+            {isExpanded ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
+          </button>
+          <button
+            onClick={() => fetchWalletHoldings(wallet)}
+            disabled={isLoadingTokens || isSelling}
+            className="p-1.5 text-slate-500 hover:text-white disabled:opacity-50"
+            title="Refresh token holdings"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoadingTokens ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+
+        {isExpanded && (
+          <div className="mt-3 space-y-2">
+            {isLoadingTokens ? (
+              <div className="text-xs text-slate-500 flex items-center gap-2">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Loading token holdings...
+              </div>
+            ) : tokens.length === 0 ? (
+              <div className="text-xs text-slate-500">No SPL tokens</div>
+            ) : (
+              tokens.map((token) => {
+                const rowKey = `${wallet.id}:${token.mint}`;
+                const isRowSelling = !!sellLoadingByRow[rowKey];
+                return (
+                  <div
+                    key={rowKey}
+                    className="p-2 rounded-lg bg-slate-900/70 border border-slate-800 flex items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1">
+                        <div className="text-xs font-mono text-slate-300 truncate">
+                          {token.mint.slice(0, 6)}...{token.mint.slice(-6)}
+                        </div>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(token.mint);
+                            showSuccess('Token mint copied!');
+                            setTimeout(() => {
+                              setSuccess(null);
+                              setSellTxHash(null);
+                            }, 2000);
+                          }}
+                          className="text-slate-500 hover:text-white"
+                        >
+                          <Copy className="w-3 h-3" />
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-xs text-slate-500">
+                          {formatTokenAmount(token.amountUi)}
+                        </span>
+                        <a
+                          href={`https://solscan.io/token/${token.mint}${network === 'devnet' ? '?cluster=devnet' : ''}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-400 hover:underline flex items-center gap-1"
+                        >
+                          View
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => handleOpenSellConfirm(wallet, token)}
+                      disabled={isRowSelling || isSelling}
+                      className="px-2.5 py-1.5 rounded text-xs bg-red-600/20 hover:bg-red-600/30 text-red-400 disabled:opacity-50 flex items-center gap-1"
+                    >
+                      {isRowSelling ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Selling...
+                        </>
+                      ) : (
+                        'Sell Max'
+                      )}
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }, [
+    walletHoldings,
+    expandedWallets,
+    walletHoldingsLoading,
+    toggleWalletExpanded,
+    fetchWalletHoldings,
+    isSelling,
+    sellLoadingByRow,
+    formatTokenAmount,
+    network,
+    handleOpenSellConfirm,
+    showSuccess,
+  ]);
 
   // Fetch transaction history for a wallet
   const fetchTransactionHistory = useCallback(async (address: string, forceRefresh = false) => {
@@ -204,9 +594,12 @@ export function TreasuryWalletManager() {
 
   const copyToClipboard = useCallback((text: string, label: string) => {
     navigator.clipboard.writeText(text);
-    setSuccess(`${label} copied!`);
-    setTimeout(() => setSuccess(null), 2000);
-  }, []);
+    showSuccess(`${label} copied!`);
+    setTimeout(() => {
+      setSuccess(null);
+      setSellTxHash(null);
+    }, 2000);
+  }, [showSuccess]);
 
   const handleCreateVault = useCallback(async () => {
     if (password.length < 8) {
@@ -223,11 +616,11 @@ export function TreasuryWalletManager() {
       setShowCreateVaultModal(false);
       setPassword('');
       setConfirmPassword('');
-      setSuccess('Vault created with Treasury wallet!');
+      showSuccess('Vault created with Treasury wallet!');
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [password, confirmPassword, generateWallet]);
+  }, [password, confirmPassword, generateWallet, showSuccess]);
 
   const handleUnlock = useCallback(async () => {
     try {
@@ -253,11 +646,11 @@ export function TreasuryWalletManager() {
       setShowAddWalletModal(false);
       setNewWalletName('');
       setImportKey('');
-      setSuccess('Sub-wallet added!');
+      showSuccess('Sub-wallet added!');
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [newWalletName, importKey, password, generateWallet, importWallet]);
+  }, [newWalletName, importKey, password, generateWallet, importWallet, showSuccess]);
 
   // Fund sub-wallet from treasury
   const handleFund = useCallback(async () => {
@@ -311,11 +704,11 @@ export function TreasuryWalletManager() {
       const signature = await connection.sendRawTransaction(transaction.serialize());
 
       setFundTxHash(signature);
-      setSuccess(`Funded ${amountSol} SOL to ${targetWallet.name}!`);
+      showSuccess(`Funded ${amountSol} SOL to ${targetWallet.name}!`);
       
       // Refresh balances after a short delay
       setTimeout(() => {
-        refreshBalances();
+        Promise.all([refreshBalances(), refreshAllWalletHoldings()]);
       }, 2000);
 
       // Close modal after success
@@ -331,7 +724,7 @@ export function TreasuryWalletManager() {
     } finally {
       setIsFunding(false);
     }
-  }, [fundTarget, fundAmount, treasuryWallet, wallets, getKeypairs, rpcUrl, refreshBalances]);
+  }, [fundTarget, fundAmount, treasuryWallet, wallets, getKeypairs, rpcUrl, refreshBalances, refreshAllWalletHoldings, showSuccess]);
 
   // Bulk fund all sub-wallets from treasury
   const handleBulkFund = useCallback(async () => {
@@ -390,16 +783,18 @@ export function TreasuryWalletManager() {
       
       await connection.confirmTransaction(signature, 'confirmed');
 
-      setSuccess(`Funded ${subWallets.length} wallets with ${amountPerWallet.toFixed(4)} SOL each!`);
+      showSuccess(`Funded ${subWallets.length} wallets with ${amountPerWallet.toFixed(4)} SOL each!`);
       
-      setTimeout(() => refreshBalances(), 1000);
+      setTimeout(() => {
+        Promise.all([refreshBalances(), refreshAllWalletHoldings()]);
+      }, 1000);
 
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setIsBulkFunding(false);
     }
-  }, [treasuryWallet, subWallets, getKeypairs, rpcUrl, refreshBalances]);
+  }, [treasuryWallet, subWallets, getKeypairs, rpcUrl, refreshBalances, refreshAllWalletHoldings, showSuccess]);
 
   // Sweep all sub-wallets back to treasury
   const handleBulkSweep = useCallback(async () => {
@@ -464,8 +859,10 @@ export function TreasuryWalletManager() {
       }
 
       if (successCount > 0) {
-        setSuccess(`Swept ${totalSwept.toFixed(4)} SOL from ${successCount} wallets to Treasury!`);
-        setTimeout(() => refreshBalances(), 1000);
+        showSuccess(`Swept ${totalSwept.toFixed(4)} SOL from ${successCount} wallets to Treasury!`);
+        setTimeout(() => {
+          Promise.all([refreshBalances(), refreshAllWalletHoldings()]);
+        }, 1000);
       } else {
         setError('Failed to sweep any wallets');
       }
@@ -475,7 +872,7 @@ export function TreasuryWalletManager() {
     } finally {
       setIsSweeping(false);
     }
-  }, [treasuryWallet, subWallets, getKeypairs, rpcUrl, refreshBalances]);
+  }, [treasuryWallet, subWallets, getKeypairs, rpcUrl, refreshBalances, refreshAllWalletHoldings, showSuccess]);
 
   // Sweep single wallet to treasury
   const handleSingleSweep = useCallback(async (walletId: string) => {
@@ -520,15 +917,39 @@ export function TreasuryWalletManager() {
       const signature = await connection.sendRawTransaction(transaction.serialize());
       await connection.confirmTransaction(signature, 'confirmed');
 
-      setSuccess(`Swept ${sweepAmount.toFixed(4)} SOL from ${wallet.name} to Treasury!`);
-      setTimeout(() => refreshBalances(), 1000);
+      showSuccess(`Swept ${sweepAmount.toFixed(4)} SOL from ${wallet.name} to Treasury!`);
+      setTimeout(() => {
+        Promise.all([refreshBalances(), refreshAllWalletHoldings()]);
+      }, 1000);
 
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setSweepingWalletId(null);
     }
-  }, [wallets, treasuryWallet, getKeypairs, rpcUrl, refreshBalances]);
+  }, [wallets, treasuryWallet, getKeypairs, rpcUrl, refreshBalances, refreshAllWalletHoldings, showSuccess]);
+
+  useEffect(() => {
+    if (isLocked) {
+      setWalletHoldings({});
+      setWalletHoldingsLoading({});
+      setExpandedWallets({});
+      setPendingSell(null);
+      setSellLoadingByRow({});
+      setSellTxHash(null);
+      setPendingPrivateKeyExport(null);
+      setIsPrivateKeyVisible(false);
+      return;
+    }
+
+    if (wallets.length === 0) {
+      setWalletHoldings({});
+      setWalletHoldingsLoading({});
+      return;
+    }
+
+    refreshAllWalletHoldings();
+  }, [isLocked, walletAddressKey, wallets.length, refreshAllWalletHoldings]);
 
   // Render locked state
   if (!hasVault) {
@@ -649,9 +1070,9 @@ export function TreasuryWalletManager() {
         </div>
         <div className="flex gap-2">
           <button
-            onClick={refreshBalances}
+            onClick={handleRefreshAll}
             className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg"
-            title="Refresh balances"
+            title="Refresh balances and holdings"
           >
             <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
@@ -669,14 +1090,38 @@ export function TreasuryWalletManager() {
       {(error || walletError) && (
         <div className="flex items-center gap-2 p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400">
           <AlertCircle className="w-5 h-5 flex-shrink-0" />
-          <span>{error || walletError}</span>
-          <button onClick={() => { setError(null); clearError(); }} className="ml-auto">×</button>
+          <div className="flex-1">
+            <span>{error || walletError}</span>
+            {error?.includes('Jupiter API key missing') && (
+              <div className="mt-2">
+                <button
+                  onClick={() => { window.location.href = '/volume'; }}
+                  className="text-xs px-3 py-1 bg-orange-600/20 hover:bg-orange-600/30 text-orange-300 rounded"
+                >
+                  Go to /volume to set Jupiter API key
+                </button>
+              </div>
+            )}
+          </div>
+          <button onClick={() => { setError(null); clearError(); setSellTxHash(null); }} className="ml-auto">×</button>
         </div>
       )}
       {success && (
         <div className="flex items-center gap-2 p-3 bg-emerald-500/20 border border-emerald-500/30 rounded-lg text-emerald-400">
           <CheckCircle className="w-5 h-5" />
-          <span>{success}</span>
+          <div className="flex-1">
+            <span>{success}</span>
+            {sellTxHash && (
+              <a
+                href={`https://solscan.io/tx/${sellTxHash}${network === 'devnet' ? '?cluster=devnet' : ''}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block text-xs text-blue-300 hover:underline mt-1"
+              >
+                View sell transaction on Solscan
+              </a>
+            )}
+          </div>
         </div>
       )}
 
@@ -718,22 +1163,31 @@ export function TreasuryWalletManager() {
           </div>
 
           <div className="flex gap-2">
-            <button
-              onClick={() => openHistory(treasuryWallet.address)}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 rounded-lg text-sm"
-            >
-              <History className="w-4 h-4" />
-              History
-            </button>
-            <a
-              href={`https://solscan.io/account/${treasuryWallet.address}${network === 'devnet' ? '?cluster=devnet' : ''}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm"
-            >
-              Solscan <ExternalLink className="w-3 h-3" />
-            </a>
-          </div>
+              <button
+                onClick={() => openHistory(treasuryWallet.address)}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 rounded-lg text-sm"
+              >
+                <History className="w-4 h-4" />
+                History
+              </button>
+              <button
+                onClick={() => handleOpenPrivateKeyExport(treasuryWallet)}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 rounded-lg text-sm"
+              >
+                <Key className="w-4 h-4" />
+                Export Key
+              </button>
+              <a
+                href={`https://solscan.io/account/${treasuryWallet.address}${network === 'devnet' ? '?cluster=devnet' : ''}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm"
+              >
+                Solscan <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+
+          {renderWalletTokenSection(treasuryWallet)}
 
           {/* Bulk Operations */}
           {subWallets.length > 0 && (
@@ -872,7 +1326,16 @@ export function TreasuryWalletManager() {
                   >
                     <History className="w-3 h-3" />
                   </button>
+                  <button
+                    onClick={() => handleOpenPrivateKeyExport(wallet)}
+                    className="flex items-center justify-center gap-1 px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 rounded text-sm"
+                    title="Export private key"
+                  >
+                    <Key className="w-3 h-3" />
+                  </button>
                 </div>
+
+                {renderWalletTokenSection(wallet)}
               </div>
             ))}
           </div>
@@ -1009,6 +1472,127 @@ export function TreasuryWalletManager() {
                   )}
                 </button>
               )}
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Sell Max Confirmation Modal */}
+      {pendingSell && (
+        <Modal onClose={() => { if (!isSelling) setPendingSell(null); }}>
+          <h3 className="text-lg font-bold mb-4 text-white">Confirm Sell Max</h3>
+          <div className="space-y-4">
+            <div className="p-3 bg-slate-800 rounded-lg">
+              <p className="text-sm text-slate-400">Wallet</p>
+              <p className="font-medium text-white">{pendingSell.walletName}</p>
+              <p className="font-mono text-xs text-slate-500">
+                {pendingSell.walletAddress.slice(0, 10)}...{pendingSell.walletAddress.slice(-8)}
+              </p>
+            </div>
+
+            <div className="p-3 bg-slate-800 rounded-lg">
+              <p className="text-sm text-slate-400">Token Mint</p>
+              <p className="font-mono text-xs text-slate-300 break-all">{pendingSell.mint}</p>
+              <p className="text-sm text-slate-400 mt-2">
+                Amount: <span className="text-white">{formatTokenAmount(pendingSell.amountUi)}</span>
+              </p>
+            </div>
+
+            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+              <p className="text-sm text-red-300">
+                This will sell the full token balance for this wallet using Jupiter.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setPendingSell(null)}
+                disabled={isSelling}
+                className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmSell}
+                disabled={isSelling}
+                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-500 disabled:bg-slate-700 disabled:text-slate-500 rounded-lg flex items-center justify-center gap-2"
+              >
+                {isSelling ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Selling...
+                  </>
+                ) : (
+                  'Confirm Sell Max'
+                )}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Private Key Export Modal */}
+      {pendingPrivateKeyExport && (
+        <Modal onClose={() => { setPendingPrivateKeyExport(null); setIsPrivateKeyVisible(false); }}>
+          <h3 className="text-lg font-bold mb-4 text-white">Export Private Key</h3>
+          <div className="space-y-4">
+            <div className="p-3 bg-slate-800 rounded-lg">
+              <p className="text-sm text-slate-400">Wallet</p>
+              <p className="font-medium text-white">{pendingPrivateKeyExport.walletName}</p>
+              <p className="font-mono text-xs text-slate-500">
+                {pendingPrivateKeyExport.walletAddress.slice(0, 10)}...{pendingPrivateKeyExport.walletAddress.slice(-8)}
+              </p>
+            </div>
+
+            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+              <p className="text-sm text-red-300">
+                Anyone with this private key can fully control and drain this wallet.
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setIsPrivateKeyVisible(prev => !prev)}
+                className="flex-1 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm flex items-center justify-center gap-2"
+              >
+                {isPrivateKeyVisible ? (
+                  <>
+                    <EyeOff className="w-4 h-4" />
+                    Hide
+                  </>
+                ) : (
+                  <>
+                    <Eye className="w-4 h-4" />
+                    Reveal
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => copyToClipboard(pendingPrivateKeyExport.secretKeyJson, 'Private key')}
+                disabled={!isPrivateKeyVisible}
+                className="flex-1 px-3 py-2 bg-amber-600/20 hover:bg-amber-600/30 disabled:bg-slate-700 disabled:text-slate-500 text-amber-300 rounded-lg text-sm flex items-center justify-center gap-2"
+              >
+                <Copy className="w-4 h-4" />
+                Copy Key
+              </button>
+            </div>
+
+            <textarea
+              readOnly
+              value={isPrivateKeyVisible ? pendingPrivateKeyExport.secretKeyJson : '********************************'}
+              className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg h-24 font-mono text-xs"
+            />
+            <p className="text-xs text-slate-500">
+              Format: JSON byte array, compatible with the Import Key field.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setPendingPrivateKeyExport(null); setIsPrivateKeyVisible(false); }}
+                className="w-full px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg"
+              >
+                Close
+              </button>
             </div>
           </div>
         </Modal>
