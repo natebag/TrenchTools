@@ -237,7 +237,11 @@ export function VolumeControl() {
   const [jupiterApiKey, setJupiterApiKey] = useState(() => localStorage.getItem('jupiter_api_key') || '')
   const [useRealTrades, setUseRealTrades] = useState(false)
   const [selectedWalletIds, setSelectedWalletIds] = useState<string[]>([])
-  const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const [resumeTick, setResumeTick] = useState(0)
+  const intervalRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isExecutingTradeRef = useRef(false)
+  const lastTradeAttemptAtRef = useRef<number | null>(null)
+  const requireBuyBeforeSellRef = useRef(true)
   
   const updateConfig = (updates: Partial<VolumeConfig>) => {
     setConfig(prev => {
@@ -343,6 +347,7 @@ export function VolumeControl() {
         alert('Please unlock your wallet vault first (go to Wallets page)');
         return;
       }
+      requireBuyBeforeSellRef.current = true;
       setStartTime(Date.now());
       setStats(prev => ({ ...prev, totalVolume24h: 0, swapsExecuted: 0, currentRate: 0 }));
       setTxLogs([]);
@@ -356,126 +361,193 @@ export function VolumeControl() {
       // Stopping
       setStartTime(null);
       if (intervalRef.current) {
-        clearInterval(intervalRef.current);
+        clearTimeout(intervalRef.current);
         intervalRef.current = null;
       }
+      requireBuyBeforeSellRef.current = true;
     }
     setIsRunning(!isRunning)
     updateConfig({ enabled: !isRunning })
   }
 
+  const getNextIntervalMs = useCallback(() => {
+    if (!useRealTrades) {
+      return 2000 + Math.random() * 3000;
+    }
+    const min = Math.max(1000, config.minIntervalMs);
+    const max = Math.max(min, config.maxIntervalMs);
+    return min + Math.random() * (max - min);
+  }, [useRealTrades, config.minIntervalMs, config.maxIntervalMs]);
+
+  const executeTrade = useCallback(async () => {
+    lastTradeAttemptAtRef.current = Date.now();
+    const isBuy = requireBuyBeforeSellRef.current ? true : Math.random() > 0.5;
+    const amount = config.minSwapSol + Math.random() * (config.maxSwapSol - config.minSwapSol);
+
+    if (useRealTrades) {
+      // REAL ON-CHAIN TRADE
+      const pendingTx: TransactionLog = {
+        id: `tx-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        timestamp: Date.now(),
+        type: isBuy ? 'buy' : 'sell',
+        amount: parseFloat(amount.toFixed(4)),
+        wallet: 'Executing...',
+        status: 'pending',
+      };
+      setTxLogs(prev => [pendingTx, ...prev].slice(0, 50));
+
+      try {
+        const result = await executeRealSwap(isBuy, amount);
+        
+        // Update the pending tx with result
+        setTxLogs(prev => prev.map(tx => 
+          tx.id === pendingTx.id 
+            ? { ...tx, status: 'success' as const, txHash: result.txHash, wallet: result.wallet }
+            : tx
+        ));
+
+        // Record trade for chart markers
+        addTrade({
+          timestamp: Date.now(),
+          type: isBuy ? 'buy' : 'sell',
+          tokenMint: config.targetToken,
+          amount: parseFloat(amount.toFixed(4)),
+          wallet: result.wallet,
+          txHash: result.txHash,
+          status: 'success'
+        });
+
+        setStats(prev => ({
+          ...prev,
+          swapsExecuted: prev.swapsExecuted + 1,
+          totalVolume24h: prev.totalVolume24h + amount,
+          currentRate: (prev.totalVolume24h + amount) / ((Date.now() - (startTime || Date.now())) / 3600000) || 0,
+          successRate: ((prev.swapsExecuted * prev.successRate / 100) + 1) / (prev.swapsExecuted + 1) * 100,
+        }));
+        if (isBuy) {
+          requireBuyBeforeSellRef.current = false;
+        }
+      } catch (err) {
+        console.error('Swap failed:', err);
+        setTxLogs(prev => prev.map(tx => 
+          tx.id === pendingTx.id 
+            ? { ...tx, status: 'failed' as const, wallet: (err as Error).message.slice(0, 30) }
+            : tx
+        ));
+      }
+      return;
+    }
+
+    // SIMULATION MODE
+    const walletNum = Math.floor(Math.random() * config.maxWallets) + 1;
+    const success = Math.random() > 0.05;
+
+    const newTx: TransactionLog = {
+      id: `tx-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      timestamp: Date.now(),
+      type: isBuy ? 'buy' : 'sell',
+      amount: parseFloat(amount.toFixed(4)),
+      wallet: `Wallet ${walletNum} (sim)`,
+      status: success ? 'success' : 'failed',
+      txHash: success ? `sim-${Math.random().toString(36).slice(2)}` : undefined,
+    };
+
+    setTxLogs(prev => [newTx, ...prev].slice(0, 50));
+
+    if (success) {
+      // Record simulated trade for chart markers
+      addTrade({
+        timestamp: Date.now(),
+        type: isBuy ? 'buy' : 'sell',
+        tokenMint: config.targetToken,
+        amount: parseFloat(amount.toFixed(4)),
+        wallet: `Wallet ${walletNum} (sim)`,
+        txHash: newTx.txHash,
+        status: 'success'
+      });
+
+      setStats(prev => ({
+        ...prev,
+        swapsExecuted: prev.swapsExecuted + 1,
+        totalVolume24h: prev.totalVolume24h + amount,
+        currentRate: (prev.totalVolume24h + amount) / ((Date.now() - (startTime || Date.now())) / 3600000) || 0,
+        successRate: ((prev.swapsExecuted * prev.successRate / 100) + 1) / (prev.swapsExecuted + 1) * 100,
+      }));
+      if (isBuy) {
+        requireBuyBeforeSellRef.current = false;
+      }
+    }
+  }, [config, useRealTrades, executeRealSwap, addTrade, startTime]);
+
   // Transaction generation loop
   useEffect(() => {
-    if (!isRunning) return;
-
-    const executeTrade = async () => {
-      const isBuy = Math.random() > 0.5;
-      const amount = config.minSwapSol + Math.random() * (config.maxSwapSol - config.minSwapSol);
-
-      if (useRealTrades) {
-        // REAL ON-CHAIN TRADE
-        const pendingTx: TransactionLog = {
-          id: `tx-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          timestamp: Date.now(),
-          type: isBuy ? 'buy' : 'sell',
-          amount: parseFloat(amount.toFixed(4)),
-          wallet: 'Executing...',
-          status: 'pending',
-        };
-        setTxLogs(prev => [pendingTx, ...prev].slice(0, 50));
-
-        try {
-          const result = await executeRealSwap(isBuy, amount);
-          
-          // Update the pending tx with result
-          setTxLogs(prev => prev.map(tx => 
-            tx.id === pendingTx.id 
-              ? { ...tx, status: 'success' as const, txHash: result.txHash, wallet: result.wallet }
-              : tx
-          ));
-
-          // Record trade for chart markers
-          addTrade({
-            timestamp: Date.now(),
-            type: isBuy ? 'buy' : 'sell',
-            tokenMint: config.targetToken,
-            amount: parseFloat(amount.toFixed(4)),
-            wallet: result.wallet,
-            txHash: result.txHash,
-            status: 'success'
-          });
-
-          setStats(prev => ({
-            ...prev,
-            swapsExecuted: prev.swapsExecuted + 1,
-            totalVolume24h: prev.totalVolume24h + amount,
-            currentRate: (prev.totalVolume24h + amount) / ((Date.now() - (startTime || Date.now())) / 3600000) || 0,
-            successRate: ((prev.swapsExecuted * prev.successRate / 100) + 1) / (prev.swapsExecuted + 1) * 100,
-          }));
-        } catch (err) {
-          console.error('Swap failed:', err);
-          setTxLogs(prev => prev.map(tx => 
-            tx.id === pendingTx.id 
-              ? { ...tx, status: 'failed' as const, wallet: (err as Error).message.slice(0, 30) }
-              : tx
-          ));
-        }
-      } else {
-        // SIMULATION MODE
-        const walletNum = Math.floor(Math.random() * config.maxWallets) + 1;
-        const success = Math.random() > 0.05;
-
-        const newTx: TransactionLog = {
-          id: `tx-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          timestamp: Date.now(),
-          type: isBuy ? 'buy' : 'sell',
-          amount: parseFloat(amount.toFixed(4)),
-          wallet: `Wallet ${walletNum} (sim)`,
-          status: success ? 'success' : 'failed',
-          txHash: success ? `sim-${Math.random().toString(36).slice(2)}` : undefined,
-        };
-
-        setTxLogs(prev => [newTx, ...prev].slice(0, 50));
-
-        if (success) {
-          // Record simulated trade for chart markers
-          addTrade({
-            timestamp: Date.now(),
-            type: isBuy ? 'buy' : 'sell',
-            tokenMint: config.targetToken,
-            amount: parseFloat(amount.toFixed(4)),
-            wallet: `Wallet ${walletNum} (sim)`,
-            txHash: newTx.txHash,
-            status: 'success'
-          });
-
-          setStats(prev => ({
-            ...prev,
-            swapsExecuted: prev.swapsExecuted + 1,
-            totalVolume24h: prev.totalVolume24h + amount,
-            currentRate: (prev.totalVolume24h + amount) / ((Date.now() - (startTime || Date.now())) / 3600000) || 0,
-            successRate: ((prev.swapsExecuted * prev.successRate / 100) + 1) / (prev.swapsExecuted + 1) * 100,
-          }));
-        }
+    if (!isRunning) {
+      if (intervalRef.current) {
+        clearTimeout(intervalRef.current);
+        intervalRef.current = null;
       }
+      return;
+    }
+
+    let cancelled = false;
+
+    const runAndSchedule = async () => {
+      if (cancelled || isExecutingTradeRef.current) {
+        return;
+      }
+
+      isExecutingTradeRef.current = true;
+      try {
+        await executeTrade();
+      } finally {
+        isExecutingTradeRef.current = false;
+      }
+
+      if (cancelled || !isRunning) {
+        return;
+      }
+
+      const nextDelay = getNextIntervalMs();
+      intervalRef.current = setTimeout(runAndSchedule, nextDelay);
     };
 
-    // Execute first trade immediately
-    executeTrade();
-
-    // Set interval based on config (real trades use actual intervals, sim uses fast demo)
-    const intervalMs = useRealTrades 
-      ? config.minIntervalMs + Math.random() * (config.maxIntervalMs - config.minIntervalMs)
-      : 2000 + Math.random() * 3000; // Fast demo for simulation
-
-    intervalRef.current = setInterval(executeTrade, intervalMs);
+    void runAndSchedule();
 
     return () => {
+      cancelled = true;
       if (intervalRef.current) {
-        clearInterval(intervalRef.current);
+        clearTimeout(intervalRef.current);
+        intervalRef.current = null;
       }
     };
-  }, [isRunning, config, startTime, useRealTrades, executeRealSwap, addTrade]);
+  }, [isRunning, executeTrade, getNextIntervalMs, resumeTick]);
+
+  // Browsers can heavily throttle timers on background tabs; force a resume pulse on visibility/focus.
+  useEffect(() => {
+    if (!isRunning) {
+      return;
+    }
+
+    const handleResume = () => {
+      if (document.visibilityState !== 'visible') {
+        return;
+      }
+
+      const lastAttempt = lastTradeAttemptAtRef.current;
+      const staleThresholdMs = Math.max(config.maxIntervalMs * 2, 60000);
+      if (!lastAttempt || Date.now() - lastAttempt >= staleThresholdMs) {
+        setResumeTick(prev => prev + 1);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleResume);
+    window.addEventListener('focus', handleResume);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleResume);
+      window.removeEventListener('focus', handleResume);
+    };
+  }, [isRunning, config.maxIntervalMs]);
   
   return (
     <div className="space-y-6">
@@ -484,6 +556,9 @@ export function VolumeControl() {
         <div>
           <h2 className="text-2xl font-bold text-white">Volume Control</h2>
           <p className="text-slate-400 mt-1">Configure volume boosting for your token</p>
+          <p className="text-xs text-slate-500 mt-1">
+            Runs in-browser. If your browser/OS suspends background tabs, trade cadence may pause and auto-resume on focus.
+          </p>
         </div>
         <button
           onClick={handleToggle}
