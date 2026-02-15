@@ -417,17 +417,24 @@ function Header({ onMenuClick }: { onMenuClick: () => void }) {
 
 function AppContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [, setCurrentPath] = useState(window.location.pathname)
-  
-  // Listen for navigation changes
-  window.addEventListener('popstate', () => {
-    setCurrentPath(window.location.pathname)
-  })
+  const [currentPath, setCurrentPath] = useState(window.location.pathname)
+  const [hasMountedVolume, setHasMountedVolume] = useState(window.location.pathname === '/volume')
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const nextPath = window.location.pathname
+      setCurrentPath(nextPath)
+      if (nextPath === '/volume') {
+        setHasMountedVolume(true)
+      }
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
   
   // Wrapper to pass the path
-  const RouteContent = () => {
-    const path = window.location.pathname
-    
+  const RouteContent = ({ path }: { path: string }) => {
     switch (path) {
       case '/': return <Dashboard />
       case '/treasury': return <TreasuryView />
@@ -439,7 +446,6 @@ function AppContent() {
       case '/activity': return <ActivityGenerator />
       case '/bots': return <BotManager />
       case '/detection': return <DetectionDashboard />
-      case '/volume': return <VolumeControl />
       case '/charts': return <TokenChart />
       case '/settings': return <SettingsPanel />
       default: return <Dashboard />
@@ -455,7 +461,12 @@ function AppContent() {
         
         <main className="flex-1 p-6 overflow-auto">
           <div className="max-w-7xl mx-auto">
-            <RouteContent />
+            {hasMountedVolume && (
+              <div className={currentPath === '/volume' ? '' : 'hidden'}>
+                <VolumeControl />
+              </div>
+            )}
+            {currentPath !== '/volume' && <RouteContent path={currentPath} />}
           </div>
         </main>
       </div>
