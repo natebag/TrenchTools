@@ -24,6 +24,9 @@ import {
   ChevronDown,
   ChevronUp,
   Coins,
+  Key,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { useSecureWallet } from '@/hooks/useSecureWallet';
 import { useNetwork } from '@/context/NetworkContext';
@@ -72,6 +75,13 @@ interface PendingSellState {
   amountRaw: string;
   amountUi: number;
   decimals: number;
+}
+
+interface PendingPrivateKeyExportState {
+  walletId: string;
+  walletName: string;
+  walletAddress: string;
+  secretKeyJson: string;
 }
 
 const CACHE_TTL = 60000; // 1 minute cache
@@ -129,6 +139,8 @@ export function TreasuryWalletManager() {
   const [isSelling, setIsSelling] = useState(false);
   const [sellLoadingByRow, setSellLoadingByRow] = useState<Record<string, boolean>>({});
   const [sellTxHash, setSellTxHash] = useState<string | null>(null);
+  const [pendingPrivateKeyExport, setPendingPrivateKeyExport] = useState<PendingPrivateKeyExportState | null>(null);
+  const [isPrivateKeyVisible, setIsPrivateKeyVisible] = useState(false);
 
   const walletAddressKey = wallets.map(w => w.address).join('|');
 
@@ -243,6 +255,23 @@ export function TreasuryWalletManager() {
       decimals: token.decimals,
     });
   }, [clearFeedback]);
+
+  const handleOpenPrivateKeyExport = useCallback((wallet: (typeof wallets)[number]) => {
+    clearFeedback();
+    const signer = getWalletSigner(wallet.address);
+    if (!signer) {
+      setError('Wallet signer not found. Unlock your vault and retry.');
+      return;
+    }
+
+    setPendingPrivateKeyExport({
+      walletId: wallet.id,
+      walletName: wallet.name,
+      walletAddress: wallet.address,
+      secretKeyJson: JSON.stringify(Array.from(signer.secretKey)),
+    });
+    setIsPrivateKeyVisible(false);
+  }, [clearFeedback, getWalletSigner]);
 
   const handleConfirmSell = useCallback(async () => {
     if (!pendingSell) return;
@@ -908,6 +937,8 @@ export function TreasuryWalletManager() {
       setPendingSell(null);
       setSellLoadingByRow({});
       setSellTxHash(null);
+      setPendingPrivateKeyExport(null);
+      setIsPrivateKeyVisible(false);
       return;
     }
 
@@ -1132,22 +1163,29 @@ export function TreasuryWalletManager() {
           </div>
 
           <div className="flex gap-2">
-            <button
-              onClick={() => openHistory(treasuryWallet.address)}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 rounded-lg text-sm"
-            >
-              <History className="w-4 h-4" />
-              History
-            </button>
-            <a
-              href={`https://solscan.io/account/${treasuryWallet.address}${network === 'devnet' ? '?cluster=devnet' : ''}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm"
-            >
-              Solscan <ExternalLink className="w-3 h-3" />
-            </a>
-          </div>
+              <button
+                onClick={() => openHistory(treasuryWallet.address)}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 rounded-lg text-sm"
+              >
+                <History className="w-4 h-4" />
+                History
+              </button>
+              <button
+                onClick={() => handleOpenPrivateKeyExport(treasuryWallet)}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 rounded-lg text-sm"
+              >
+                <Key className="w-4 h-4" />
+                Export Key
+              </button>
+              <a
+                href={`https://solscan.io/account/${treasuryWallet.address}${network === 'devnet' ? '?cluster=devnet' : ''}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm"
+              >
+                Solscan <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
 
           {renderWalletTokenSection(treasuryWallet)}
 
@@ -1287,6 +1325,13 @@ export function TreasuryWalletManager() {
                     title="View transaction history"
                   >
                     <History className="w-3 h-3" />
+                  </button>
+                  <button
+                    onClick={() => handleOpenPrivateKeyExport(wallet)}
+                    className="flex items-center justify-center gap-1 px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 rounded text-sm"
+                    title="Export private key"
+                  >
+                    <Key className="w-3 h-3" />
                   </button>
                 </div>
 
@@ -1480,6 +1525,73 @@ export function TreasuryWalletManager() {
                 ) : (
                   'Confirm Sell Max'
                 )}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Private Key Export Modal */}
+      {pendingPrivateKeyExport && (
+        <Modal onClose={() => { setPendingPrivateKeyExport(null); setIsPrivateKeyVisible(false); }}>
+          <h3 className="text-lg font-bold mb-4 text-white">Export Private Key</h3>
+          <div className="space-y-4">
+            <div className="p-3 bg-slate-800 rounded-lg">
+              <p className="text-sm text-slate-400">Wallet</p>
+              <p className="font-medium text-white">{pendingPrivateKeyExport.walletName}</p>
+              <p className="font-mono text-xs text-slate-500">
+                {pendingPrivateKeyExport.walletAddress.slice(0, 10)}...{pendingPrivateKeyExport.walletAddress.slice(-8)}
+              </p>
+            </div>
+
+            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+              <p className="text-sm text-red-300">
+                Anyone with this private key can fully control and drain this wallet.
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setIsPrivateKeyVisible(prev => !prev)}
+                className="flex-1 px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm flex items-center justify-center gap-2"
+              >
+                {isPrivateKeyVisible ? (
+                  <>
+                    <EyeOff className="w-4 h-4" />
+                    Hide
+                  </>
+                ) : (
+                  <>
+                    <Eye className="w-4 h-4" />
+                    Reveal
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => copyToClipboard(pendingPrivateKeyExport.secretKeyJson, 'Private key')}
+                disabled={!isPrivateKeyVisible}
+                className="flex-1 px-3 py-2 bg-amber-600/20 hover:bg-amber-600/30 disabled:bg-slate-700 disabled:text-slate-500 text-amber-300 rounded-lg text-sm flex items-center justify-center gap-2"
+              >
+                <Copy className="w-4 h-4" />
+                Copy Key
+              </button>
+            </div>
+
+            <textarea
+              readOnly
+              value={isPrivateKeyVisible ? pendingPrivateKeyExport.secretKeyJson : '********************************'}
+              className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg h-24 font-mono text-xs"
+            />
+            <p className="text-xs text-slate-500">
+              Format: JSON byte array, compatible with the Import Key field.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setPendingPrivateKeyExport(null); setIsPrivateKeyVisible(false); }}
+                className="w-full px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg"
+              >
+                Close
               </button>
             </div>
           </div>
