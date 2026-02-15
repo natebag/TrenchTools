@@ -238,6 +238,7 @@ export function VolumeControl() {
   const [useRealTrades, setUseRealTrades] = useState(false)
   const [selectedWalletIds, setSelectedWalletIds] = useState<string[]>([])
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const requireBuyBeforeSellRef = useRef(true)
   
   const updateConfig = (updates: Partial<VolumeConfig>) => {
     setConfig(prev => {
@@ -343,6 +344,7 @@ export function VolumeControl() {
         alert('Please unlock your wallet vault first (go to Wallets page)');
         return;
       }
+      requireBuyBeforeSellRef.current = true;
       setStartTime(Date.now());
       setStats(prev => ({ ...prev, totalVolume24h: 0, swapsExecuted: 0, currentRate: 0 }));
       setTxLogs([]);
@@ -359,6 +361,7 @@ export function VolumeControl() {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
+      requireBuyBeforeSellRef.current = true;
     }
     setIsRunning(!isRunning)
     updateConfig({ enabled: !isRunning })
@@ -369,7 +372,7 @@ export function VolumeControl() {
     if (!isRunning) return;
 
     const executeTrade = async () => {
-      const isBuy = Math.random() > 0.5;
+      const isBuy = requireBuyBeforeSellRef.current ? true : Math.random() > 0.5;
       const amount = config.minSwapSol + Math.random() * (config.maxSwapSol - config.minSwapSol);
 
       if (useRealTrades) {
@@ -412,6 +415,9 @@ export function VolumeControl() {
             currentRate: (prev.totalVolume24h + amount) / ((Date.now() - (startTime || Date.now())) / 3600000) || 0,
             successRate: ((prev.swapsExecuted * prev.successRate / 100) + 1) / (prev.swapsExecuted + 1) * 100,
           }));
+          if (isBuy) {
+            requireBuyBeforeSellRef.current = false;
+          }
         } catch (err) {
           console.error('Swap failed:', err);
           setTxLogs(prev => prev.map(tx => 
@@ -456,6 +462,9 @@ export function VolumeControl() {
             currentRate: (prev.totalVolume24h + amount) / ((Date.now() - (startTime || Date.now())) / 3600000) || 0,
             successRate: ((prev.swapsExecuted * prev.successRate / 100) + 1) / (prev.swapsExecuted + 1) * 100,
           }));
+          if (isBuy) {
+            requireBuyBeforeSellRef.current = false;
+          }
         }
       }
     };
