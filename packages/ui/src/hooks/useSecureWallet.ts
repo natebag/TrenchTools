@@ -65,6 +65,13 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
     const state = manager.getState();
     setIsLocked(state.isLocked);
     setHasVault(state.hasVault);
+
+    if (!state.isLocked) {
+      const unlockedWallets = manager.getUnlockedWallets();
+      setWallets(unlockedWallets as SecureWallet[]);
+    } else {
+      setWallets([]);
+    }
   }, [manager]);
   
   // Fetch balances for all wallets

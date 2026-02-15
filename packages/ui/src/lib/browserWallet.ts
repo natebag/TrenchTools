@@ -72,6 +72,18 @@ export class BrowserWalletManager {
   isUnlocked(): boolean {
     return this.vault.isUnlocked();
   }
+
+  /**
+   * Get currently unlocked wallets from in-memory vault data
+   * without requiring password re-entry.
+   */
+  getUnlockedWallets(): Wallet[] {
+    const unlocked = this.vault.getUnlockedWallets();
+    if (!unlocked) {
+      return [];
+    }
+    return unlocked.map(w => this.dataToWallet(w));
+  }
   
   /**
    * Unlock vault with password
