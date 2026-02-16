@@ -9,9 +9,11 @@ import {
   Check,
   Terminal,
   ExternalLink,
-  Crosshair,
+  Wrench,
   TrendingUp,
   Eye,
+  Crosshair,
+  Bot,
 } from 'lucide-react'
 
 function App() {
@@ -22,8 +24,8 @@ function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-2">
-              <Crosshair className="w-8 h-8 text-emerald-500" />
-              <span className="text-xl font-bold">TrenchSniper OS</span>
+              <Wrench className="w-8 h-8 text-emerald-500" />
+              <span className="text-xl font-bold">TrenchTools</span>
             </div>
             <div className="hidden md:flex items-center gap-8">
               <a href="#features" className="text-slate-400 hover:text-white transition-colors">Features</a>
@@ -60,47 +62,52 @@ function App() {
             </div>
             
             <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold mb-6 leading-tight">
-              <span className="gradient-text">TrenchSniper OS</span>
+              <span className="gradient-text">TrenchTools</span>
               <br />
-              <span className="text-white">Solana Market Making Toolkit</span>
+              <span className="text-white">Solana Trading Suite</span>
             </h1>
             
             <p className="text-xl text-slate-400 max-w-3xl mx-auto mb-10">
-              The open-source alternative to proprietary Solana tools. Volume boosting, 
-              detection systems, real-time charts, and treasury management — all in one powerful toolkit.
+              The complete Solana trading toolkit. Token sniping, volume boosting, 
+              wallet management, and real-time analytics — open source or hosted with just 0.05% fees.
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <a
-                href="https://github.com/natebag/TrenchSniper-OS"
-                target="_blank"
-                rel="noopener noreferrer"
+                href="/app"
                 className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 px-8 py-4 rounded-xl text-lg font-semibold transition-all hover:scale-105 animate-pulse-glow"
               >
-                <Github className="w-5 h-5" />
-                Get Started
+                <Zap className="w-5 h-5" />
+                Launch App
                 <ArrowRight className="w-5 h-5" />
               </a>
               <a
-                href="#dashboard"
+                href="https://github.com/natebag/TrenchSniper-OS"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 px-8 py-4 rounded-xl text-lg font-semibold transition-all hover:scale-105"
               >
-                View Demo
+                <Github className="w-5 h-5" />
+                Self-Host (Free)
               </a>
             </div>
 
-            <div className="flex items-center justify-center gap-8 mt-12 text-slate-500">
+            <div className="flex flex-wrap items-center justify-center gap-6 mt-12 text-slate-500">
               <div className="flex items-center gap-2">
                 <Check className="w-5 h-5 text-emerald-500" />
-                <span>100% Open Source</span>
+                <span>Open Source</span>
               </div>
               <div className="flex items-center gap-2">
                 <Check className="w-5 h-5 text-emerald-500" />
-                <span>Self-Hosted</span>
+                <span>Non-Custodial</span>
               </div>
               <div className="flex items-center gap-2">
                 <Check className="w-5 h-5 text-emerald-500" />
-                <span>No Fees</span>
+                <span>0.05% Hosted Fee</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Check className="w-5 h-5 text-emerald-500" />
+                <span>Telegram Bot</span>
               </div>
             </div>
           </div>
@@ -117,42 +124,42 @@ function App() {
           
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
             <FeatureCard
-              icon={<Zap className="w-8 h-8" />}
-              title="Volume Boosting"
-              description="Automated volume generation with configurable patterns, timing, and wallet distribution."
+              icon={<Crosshair className="w-8 h-8" />}
+              title="Token Sniper"
+              description="Lightning-fast token sniping with auto-buy on launch and configurable limits."
             />
             <FeatureCard
-              icon={<Eye className="w-8 h-8" />}
-              title="Detection Systems"
-              description="Real-time monitoring to detect bots, snipers, and suspicious trading patterns."
+              icon={<Zap className="w-8 h-8" />}
+              title="Volume Boosting"
+              description="Automated volume generation with smart patterns that avoid detection."
+            />
+            <FeatureCard
+              icon={<Wallet className="w-8 h-8" />}
+              title="Wallet Manager"
+              description="Multi-wallet treasury with auto-distribution, sweeping, and balance tracking."
             />
             <FeatureCard
               icon={<BarChart3 className="w-8 h-8" />}
               title="Live Charts"
-              description="Real-time price charts, volume analysis, and market depth visualization."
-            />
-            <FeatureCard
-              icon={<Wallet className="w-8 h-8" />}
-              title="Treasury Management"
-              description="Multi-wallet management, automatic fund distribution, and balance tracking."
+              description="Real-time price charts, volume analysis, and trade markers."
             />
           </div>
 
           <div className="grid md:grid-cols-3 gap-6 mt-6">
             <FeatureCard
-              icon={<Shield className="w-8 h-8" />}
-              title="Security First"
-              description="Local key storage, encrypted configs, and no external API dependencies."
+              icon={<Bot className="w-8 h-8" />}
+              title="Telegram Bot"
+              description="Trade from Telegram. Snipe, boost volume, and manage wallets on the go."
             />
             <FeatureCard
-              icon={<Terminal className="w-8 h-8" />}
-              title="Developer Friendly"
-              description="TypeScript SDK, REST API, WebSocket streams, and extensive documentation."
+              icon={<Shield className="w-8 h-8" />}
+              title="Non-Custodial"
+              description="Your keys, your coins. We never store or have access to your private keys."
             />
             <FeatureCard
               icon={<TrendingUp className="w-8 h-8" />}
-              title="Analytics Dashboard"
-              description="Track performance, analyze trades, and export detailed reports."
+              title="Analytics"
+              description="Track performance, P&L, and export detailed trade reports."
             />
           </div>
         </div>
@@ -208,7 +215,7 @@ function App() {
                     <div className="w-3 h-3 rounded-full bg-yellow-500" />
                     <div className="w-3 h-3 rounded-full bg-green-500" />
                   </div>
-                  <div className="flex-1 text-center text-sm text-slate-500">TrenchSniper OS Dashboard</div>
+                  <div className="flex-1 text-center text-sm text-slate-500">TrenchTools Dashboard</div>
                 </div>
                 
                 {/* Dashboard content mockup */}
@@ -297,8 +304,8 @@ function App() {
           <Github className="w-16 h-16 mx-auto mb-6 text-emerald-500" />
           <h2 className="text-4xl font-bold mb-4">Open Source Forever</h2>
           <p className="text-xl text-slate-400 mb-8">
-            TrenchSniper OS is 100% open source under the MIT license. No hidden fees, no token gates, 
-            no VC bullshit. Just powerful tools for the community, by the community.
+            TrenchTools is 100% open source under the MIT license. Self-host for free, 
+            or use our hosted service for just 0.05% per swap. No token gates, no VC bullshit.
           </p>
           
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
@@ -326,7 +333,7 @@ function App() {
             <div className="glass rounded-xl p-6">
               <h3 className="font-semibold text-lg mb-2">Contribute</h3>
               <p className="text-slate-400">
-                PRs welcome! Check out our contributing guide and help make TrenchSniper even better.
+                PRs welcome! Check out our contributing guide and help make TrenchTools even better.
               </p>
             </div>
             <div className="glass rounded-xl p-6">
@@ -351,11 +358,11 @@ function App() {
           <div className="grid md:grid-cols-4 gap-8 mb-12">
             <div>
               <div className="flex items-center gap-2 mb-4">
-                <Crosshair className="w-6 h-6 text-emerald-500" />
-                <span className="text-lg font-bold">TrenchSniper OS</span>
+                <Wrench className="w-6 h-6 text-emerald-500" />
+                <span className="text-lg font-bold">TrenchTools</span>
               </div>
               <p className="text-slate-400 text-sm">
-                Open-source Solana market making toolkit. Built for degens, by degens.
+                Open-source Solana trading suite. Built for degens, by degens.
               </p>
             </div>
             
@@ -401,7 +408,7 @@ function App() {
                   <Github className="w-5 h-5" />
                 </a>
                 <a
-                  href="https://twitter.com/trenchsniper"
+                  href="https://twitter.com/trenchtools"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-10 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center transition-colors"
@@ -414,7 +421,7 @@ function App() {
           
           <div className="pt-8 border-t border-slate-800 flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-slate-500 text-sm">
-              © {new Date().getFullYear()} TrenchSniper OS. Open source under MIT License.
+              © {new Date().getFullYear()} TrenchTools. Open source under MIT License.
             </p>
             <p className="text-slate-500 text-sm">
               Made with ❤️ for the Solana community
