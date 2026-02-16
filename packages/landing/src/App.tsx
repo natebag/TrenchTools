@@ -7,11 +7,9 @@ import {
   Twitter,
   ArrowRight,
   Check,
-  Terminal,
   ExternalLink,
   Wrench,
   TrendingUp,
-  Eye,
   Crosshair,
   Bot,
 } from 'lucide-react'
