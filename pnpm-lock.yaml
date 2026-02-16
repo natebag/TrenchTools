@@ -166,6 +166,9 @@ importers:
 
   packages/landing:
     dependencies:
+      express:
+        specifier: ^4.18.2
+        version: 4.22.1
       lucide-react:
         specifier: ^0.441.0
         version: 0.441.0(react@18.3.1)
