@@ -29,6 +29,7 @@ import {
   type DexType, 
   type DexConfig 
 } from '@/lib/dex'
+import { Connection, PublicKey } from '@solana/web3.js'
 
 // Types for Volume Boosting configuration
 interface VolumeConfig {
@@ -220,8 +221,15 @@ interface TransactionLog {
   txHash?: string;
 }
 
+interface WalletRuntimeState {
+  solLamports: number;
+  tokenRawBalance: bigint;
+}
+
 // Use WSOL from DEX constants
 const WSOL = KNOWN_MINTS.WSOL;
+const LAMPORTS_PER_SOL = 1_000_000_000;
+const SOL_RESERVE_LAMPORTS = 5_000_000; // keep some SOL for fees/rent
 
 export function VolumeControl() {
   const { rpcUrl, network } = useNetwork();
@@ -270,7 +278,7 @@ export function VolumeControl() {
   }, [jupiterApiKey]);
 
   // Execute real swap via selected DEX
-  const executeRealSwap = useCallback(async (isBuy: boolean, amountSol: number) => {
+  const executeRealSwap = useCallback(async (preferredBuy: boolean, targetAmountSol: number) => {
     const allKeypairs = getKeypairs();
     if (allKeypairs.length === 0) {
       throw new Error('No wallets available. Unlock your vault first.');
@@ -282,55 +290,203 @@ export function VolumeControl() {
       throw new Error(`${swapper.name} is not yet implemented. Please use Jupiter.`);
     }
 
-    // Filter to selected wallets only, or use all if none selected
-    let availableKeypairs = allKeypairs;
-    if (selectedWalletIds.length > 0) {
-      availableKeypairs = allKeypairs.filter((_kp, idx) => {
-        const wallet = wallets[idx];
-        return wallet && selectedWalletIds.includes(wallet.id);
-      });
-      if (availableKeypairs.length === 0) {
-        availableKeypairs = allKeypairs; // Fallback to all
-      }
+    let targetMintPubkey: PublicKey;
+    try {
+      targetMintPubkey = new PublicKey(config.targetToken);
+    } catch {
+      throw new Error('Invalid target token mint address');
     }
 
-    // Pick a random wallet from available ones
-    const walletIndex = Math.floor(Math.random() * availableKeypairs.length);
-    const wallet = availableKeypairs[walletIndex];
-
-    const inputMint = isBuy ? WSOL : config.targetToken;
-    const outputMint = isBuy ? config.targetToken : WSOL;
-    const amountLamports = Math.floor(amountSol * 1e9);
-
-    // DEX config
     const dexConfig: DexConfig = {
       rpcUrl,
       apiKey: jupiterApiKey || undefined,
       slippageBps: 200, // 2% slippage
     };
 
-    // Get quote from selected DEX
-    const quote = await getQuote(
-      config.selectedDex,
-      inputMint,
-      outputMint,
-      amountLamports,
-      dexConfig
+    const keypairByAddress = new Map(
+      allKeypairs.map(kp => [kp.publicKey.toBase58(), kp] as const)
     );
 
-    // Execute swap
-    const result = await dexExecuteSwap(quote, wallet, dexConfig);
-
-    if (!result.success) {
-      throw new Error(result.error || 'Swap failed');
+    const baseWallets = selectedWalletIds.length > 0
+      ? wallets.filter(w => selectedWalletIds.includes(w.id))
+      : wallets;
+    if (baseWallets.length === 0) {
+      throw new Error('No wallets selected for trading');
     }
 
-    return {
-      success: true,
-      txHash: result.txHash,
-      wallet: result.wallet
+    const maxWalletsToUse = Math.max(1, Math.min(config.maxWallets || baseWallets.length, baseWallets.length));
+    const shuffledWallets = [...baseWallets].sort(() => Math.random() - 0.5).slice(0, maxWalletsToUse);
+    const candidates = shuffledWallets
+      .map(wallet => ({ wallet, signer: keypairByAddress.get(wallet.address) }))
+      .filter((candidate): candidate is { wallet: (typeof wallets)[number]; signer: (typeof allKeypairs)[number] } => Boolean(candidate.signer));
+    if (candidates.length === 0) {
+      throw new Error('No signer available for selected wallets. Unlock vault and retry.');
+    }
+
+    const clampRawToSafeNumber = (amountRaw: bigint): number => {
+      if (amountRaw <= 0n) return 0;
+      const maxSafe = BigInt(Number.MAX_SAFE_INTEGER);
+      return Number(amountRaw > maxSafe ? maxSafe : amountRaw);
     };
-  }, [getKeypairs, rpcUrl, jupiterApiKey, config, selectedWalletIds, wallets]);
+
+    const chooseSellAmountRaw = (tokenRawBalance: bigint, forceMax: boolean): bigint => {
+      if (tokenRawBalance <= 0n) return 0n;
+      if (forceMax || tokenRawBalance < 1000n) return tokenRawBalance;
+      const percentage = BigInt(25 + Math.floor(Math.random() * 51)); // 25-75%
+      const partialAmount = (tokenRawBalance * percentage) / 100n;
+      return partialAmount > 0n ? partialAmount : tokenRawBalance;
+    };
+
+    type TradePlan = {
+      isBuy: boolean;
+      inputMint: string;
+      outputMint: string;
+      amountRaw: number;
+      amountSolEquivalent: number;
+      wallet: (typeof wallets)[number];
+      signer: (typeof allKeypairs)[number];
+      tokenRawBalance: bigint;
+      forceSellMax: boolean;
+    };
+
+    const connection = new Connection(rpcUrl, 'confirmed');
+    const minBuyLamports = Math.max(1, Math.floor(config.minSwapSol * LAMPORTS_PER_SOL));
+    const desiredBuyLamports = Math.max(1, Math.floor(targetAmountSol * LAMPORTS_PER_SOL));
+
+    let chosenPlan: TradePlan | null = null;
+
+    for (const candidate of candidates) {
+      let walletState: WalletRuntimeState;
+      try {
+        const owner = new PublicKey(candidate.wallet.address);
+        const [solLamports, tokenAccounts] = await Promise.all([
+          connection.getBalance(owner, 'confirmed'),
+          connection.getParsedTokenAccountsByOwner(owner, { mint: targetMintPubkey }, 'confirmed'),
+        ]);
+
+        walletState = tokenAccounts.value.reduce<WalletRuntimeState>((acc, account) => {
+          try {
+            const tokenAmount = account.account.data.parsed.info.tokenAmount;
+            acc.tokenRawBalance += BigInt(tokenAmount.amount as string);
+          } catch {
+            // Ignore malformed parsed account and continue.
+          }
+          return acc;
+        }, { solLamports, tokenRawBalance: 0n });
+      } catch (walletStateError) {
+        console.warn('Skipping wallet due to balance fetch error:', candidate.wallet.address, walletStateError);
+        continue;
+      }
+
+      const spendableLamports = Math.max(0, walletState.solLamports - SOL_RESERVE_LAMPORTS);
+      const canBuy = spendableLamports >= minBuyLamports;
+      const hasTokenBalance = walletState.tokenRawBalance > 0n;
+
+      const makeBuyPlan = (): TradePlan | null => {
+        if (!canBuy) return null;
+        const amountRaw = Math.max(minBuyLamports, Math.min(desiredBuyLamports, spendableLamports));
+        return {
+          isBuy: true,
+          inputMint: WSOL,
+          outputMint: config.targetToken,
+          amountRaw,
+          amountSolEquivalent: amountRaw / LAMPORTS_PER_SOL,
+          wallet: candidate.wallet,
+          signer: candidate.signer,
+          tokenRawBalance: walletState.tokenRawBalance,
+          forceSellMax: false,
+        };
+      };
+
+      const makeSellPlan = (forceMax: boolean): TradePlan | null => {
+        if (!hasTokenBalance) return null;
+        const sellRawBigInt = chooseSellAmountRaw(walletState.tokenRawBalance, forceMax);
+        const amountRaw = clampRawToSafeNumber(sellRawBigInt);
+        if (amountRaw <= 0) return null;
+        return {
+          isBuy: false,
+          inputMint: config.targetToken,
+          outputMint: WSOL,
+          amountRaw,
+          amountSolEquivalent: targetAmountSol,
+          wallet: candidate.wallet,
+          signer: candidate.signer,
+          tokenRawBalance: walletState.tokenRawBalance,
+          forceSellMax: forceMax,
+        };
+      };
+
+      if (preferredBuy) {
+        chosenPlan = makeBuyPlan() ?? makeSellPlan(true);
+      } else {
+        chosenPlan = makeSellPlan(spendableLamports < minBuyLamports) ?? makeBuyPlan();
+      }
+
+      if (chosenPlan) break;
+    }
+
+    if (!chosenPlan) {
+      throw new Error('No executable trade found. Need SOL for buys or token balance for sells.');
+    }
+
+    const runPlan = async (plan: TradePlan) => {
+      const quote = await getQuote(
+        config.selectedDex,
+        plan.inputMint,
+        plan.outputMint,
+        plan.amountRaw,
+        dexConfig
+      );
+
+      const swapResult = await dexExecuteSwap(quote, plan.signer, dexConfig);
+      if (!swapResult.success) {
+        throw new Error(swapResult.error || 'Swap failed');
+      }
+      return swapResult;
+    };
+
+    try {
+      const swapResult = await runPlan(chosenPlan);
+
+      return {
+        success: true,
+        txHash: swapResult.txHash,
+        wallet: swapResult.wallet,
+        type: chosenPlan.isBuy ? 'buy' as const : 'sell' as const,
+        amountSol: chosenPlan.amountSolEquivalent,
+      };
+    } catch (error) {
+      if (!chosenPlan.isBuy && !chosenPlan.forceSellMax) {
+        const maxSellRaw = clampRawToSafeNumber(chosenPlan.tokenRawBalance);
+        if (maxSellRaw > chosenPlan.amountRaw) {
+          const retryPlan = { ...chosenPlan, amountRaw: maxSellRaw, forceSellMax: true };
+          try {
+            const retryResult = await runPlan(retryPlan);
+            return {
+              success: true,
+              txHash: retryResult.txHash,
+              wallet: retryResult.wallet,
+              type: 'sell' as const,
+              amountSol: retryPlan.amountSolEquivalent,
+            };
+          } catch (retryError) {
+            throw new Error(`${(error as Error).message}; retry sell max failed: ${(retryError as Error).message}`);
+          }
+        }
+      }
+      throw error;
+    }
+  }, [
+    getKeypairs,
+    config.selectedDex,
+    config.targetToken,
+    config.maxWallets,
+    config.minSwapSol,
+    selectedWalletIds,
+    wallets,
+    rpcUrl,
+    jupiterApiKey,
+  ]);
 
   const handleToggle = () => {
     if (!isRunning) {
@@ -381,7 +537,7 @@ export function VolumeControl() {
 
   const executeTrade = useCallback(async () => {
     lastTradeAttemptAtRef.current = Date.now();
-    const isBuy = requireBuyBeforeSellRef.current ? true : Math.random() > 0.5;
+    const preferredIsBuy = requireBuyBeforeSellRef.current ? true : Math.random() > 0.5;
     const amount = config.minSwapSol + Math.random() * (config.maxSwapSol - config.minSwapSol);
 
     if (useRealTrades) {
@@ -389,7 +545,7 @@ export function VolumeControl() {
       const pendingTx: TransactionLog = {
         id: `tx-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         timestamp: Date.now(),
-        type: isBuy ? 'buy' : 'sell',
+        type: preferredIsBuy ? 'buy' : 'sell',
         amount: parseFloat(amount.toFixed(4)),
         wallet: 'Executing...',
         status: 'pending',
@@ -397,21 +553,29 @@ export function VolumeControl() {
       setTxLogs(prev => [pendingTx, ...prev].slice(0, 50));
 
       try {
-        const result = await executeRealSwap(isBuy, amount);
+        const result = await executeRealSwap(preferredIsBuy, amount);
+        const executedAmountSol = parseFloat(result.amountSol.toFixed(4));
         
         // Update the pending tx with result
         setTxLogs(prev => prev.map(tx => 
           tx.id === pendingTx.id 
-            ? { ...tx, status: 'success' as const, txHash: result.txHash, wallet: result.wallet }
+            ? {
+                ...tx,
+                status: 'success' as const,
+                type: result.type,
+                amount: executedAmountSol,
+                txHash: result.txHash,
+                wallet: result.wallet,
+              }
             : tx
         ));
 
         // Record trade for chart markers
         addTrade({
           timestamp: Date.now(),
-          type: isBuy ? 'buy' : 'sell',
+          type: result.type,
           tokenMint: config.targetToken,
-          amount: parseFloat(amount.toFixed(4)),
+          amount: executedAmountSol,
           wallet: result.wallet,
           txHash: result.txHash,
           status: 'success'
@@ -420,11 +584,11 @@ export function VolumeControl() {
         setStats(prev => ({
           ...prev,
           swapsExecuted: prev.swapsExecuted + 1,
-          totalVolume24h: prev.totalVolume24h + amount,
-          currentRate: (prev.totalVolume24h + amount) / ((Date.now() - (startTime || Date.now())) / 3600000) || 0,
+          totalVolume24h: prev.totalVolume24h + executedAmountSol,
+          currentRate: (prev.totalVolume24h + executedAmountSol) / ((Date.now() - (startTime || Date.now())) / 3600000) || 0,
           successRate: ((prev.swapsExecuted * prev.successRate / 100) + 1) / (prev.swapsExecuted + 1) * 100,
         }));
-        if (isBuy) {
+        if (result.type === 'buy') {
           requireBuyBeforeSellRef.current = false;
         }
       } catch (err) {
@@ -445,7 +609,7 @@ export function VolumeControl() {
     const newTx: TransactionLog = {
       id: `tx-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       timestamp: Date.now(),
-      type: isBuy ? 'buy' : 'sell',
+      type: preferredIsBuy ? 'buy' : 'sell',
       amount: parseFloat(amount.toFixed(4)),
       wallet: `Wallet ${walletNum} (sim)`,
       status: success ? 'success' : 'failed',
@@ -458,7 +622,7 @@ export function VolumeControl() {
       // Record simulated trade for chart markers
       addTrade({
         timestamp: Date.now(),
-        type: isBuy ? 'buy' : 'sell',
+        type: preferredIsBuy ? 'buy' : 'sell',
         tokenMint: config.targetToken,
         amount: parseFloat(amount.toFixed(4)),
         wallet: `Wallet ${walletNum} (sim)`,
@@ -473,7 +637,7 @@ export function VolumeControl() {
         currentRate: (prev.totalVolume24h + amount) / ((Date.now() - (startTime || Date.now())) / 3600000) || 0,
         successRate: ((prev.swapsExecuted * prev.successRate / 100) + 1) / (prev.swapsExecuted + 1) * 100,
       }));
-      if (isBuy) {
+      if (preferredIsBuy) {
         requireBuyBeforeSellRef.current = false;
       }
     }
