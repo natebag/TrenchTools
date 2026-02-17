@@ -5,7 +5,7 @@
  * across all DEXs for optimal pricing.
  */
 
-import { Connection, VersionedTransaction, Keypair } from '@solana/web3.js';
+import { Connection, VersionedTransaction, Keypair, SendTransactionError } from '@solana/web3.js';
 import type { DexSwapper, Quote, SwapResult, DexConfig } from './types';
 
 const JUPITER_API_URL = 'https://api.jup.ag/swap/v1';
@@ -63,10 +63,9 @@ export const jupiterSwapper: DexSwapper = {
   ): Promise<SwapResult> {
     const walletAddress = wallet.publicKey.toBase58();
     const truncatedWallet = walletAddress.slice(0, 8) + '...';
+    const connection = new Connection(config.rpcUrl, 'confirmed');
 
     try {
-      const connection = new Connection(config.rpcUrl, 'confirmed');
-
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       };
@@ -113,9 +112,22 @@ export const jupiterSwapper: DexSwapper = {
         outputAmount: quote.outputAmount,
       };
     } catch (error) {
+      let errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      if (error instanceof SendTransactionError) {
+        try {
+          const logs = await error.getLogs(connection);
+          if (logs?.length) {
+            errorMessage = `${errorMessage}\nLogs: ${JSON.stringify(logs)}`;
+          }
+        } catch {
+          // If log fetch fails, keep the original error message.
+        }
+      }
+
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: errorMessage,
         wallet: truncatedWallet,
         inputAmount: quote.inputAmount,
       };

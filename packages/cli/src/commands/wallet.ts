@@ -2,11 +2,11 @@
  * Wallet Command - Wallet management utilities
  */
 
-import { Connection, Keypair, PublicKey, LAMPORTS_PER_SOL, SystemProgram, Transaction } from '@solana/web3.js';
+import { Connection, Keypair, LAMPORTS_PER_SOL, SystemProgram, Transaction } from '@solana/web3.js';
 import chalk from 'chalk';
 import ora from 'ora';
 import { TrenchConfig, loadKeypair } from '../config.js';
-import { generateWallets } from '@trenchsniper/core/wallet';
+import { generate } from '@trenchsniper/core/wallet';
 
 interface WalletOptions {
   generate?: string;
@@ -32,7 +32,7 @@ export async function walletCommand(options: WalletOptions): Promise<void> {
       }
 
       spinner.text = `Generating ${count} wallet(s)...`;
-      const wallets = generateWallets(count);
+      const wallets = generate({ count });
 
       spinner.succeed(chalk.green(`Generated ${count} wallet(s)`));
       console.log(chalk.cyan('\n🔑 New Wallets (save these keys securely!):'));
@@ -40,8 +40,8 @@ export async function walletCommand(options: WalletOptions): Promise<void> {
       for (let i = 0; i < wallets.length; i++) {
         const w = wallets[i];
         console.log(chalk.yellow(`\n--- Wallet ${i + 1} ---`));
-        console.log(`Public Key: ${w.publicKey}`);
-        console.log(`Private Key: ${w.privateKey}`);
+        console.log(`Public Key: ${w.publicKey.toBase58()}`);
+        console.log(`Private Key: [${Array.from(w.secretKey).join(',')}]`);
       }
 
       console.log(chalk.red('\n⚠️  IMPORTANT: Save these private keys securely!'));

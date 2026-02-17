@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { 
   Volume2, 
   TrendingUp, 
@@ -29,7 +29,20 @@ import {
   type DexType, 
   type DexConfig 
 } from '@/lib/dex'
-import { Connection, PublicKey } from '@solana/web3.js'
+import {
+  Connection,
+  PublicKey,
+  Keypair,
+  Transaction,
+  SystemProgram,
+} from '@solana/web3.js'
+import {
+  TOKEN_PROGRAM_ID,
+  createAssociatedTokenAccountIdempotentInstruction,
+  createTransferInstruction,
+  createCloseAccountInstruction,
+  getAssociatedTokenAddressSync,
+} from '@solana/spl-token'
 import {
   detectTokenVenues,
   getPumpSwapCanonicalFeeProfile,
@@ -38,6 +51,11 @@ import {
   type PumpSwapFeeProfile,
   type RunoutEstimateOutput,
 } from '@trenchsniper/core'
+import {
+  ROTATION_WALLET_PREFIX,
+  buildRotationWalletName,
+  isRotationManagedWallet,
+} from '@/lib/volumeRotation'
 
 // Types for Volume Boosting configuration
 interface VolumeConfig {
@@ -53,6 +71,8 @@ interface VolumeConfig {
   minIntervalMs: number
   maxIntervalMs: number
   estimatedTxFeeSol: number
+  walletRotationEnabled: boolean
+  walletRotationIntervalSuccesses: number
 }
 
 interface VolumeStats {
@@ -79,6 +99,8 @@ const defaultConfig: VolumeConfig = {
   minIntervalMs: 30000,
   maxIntervalMs: 120000,
   estimatedTxFeeSol: 0.00005,
+  walletRotationEnabled: false,
+  walletRotationIntervalSuccesses: 12,
 }
 
 // Load config from localStorage
@@ -240,14 +262,40 @@ interface WalletRuntimeState {
   tokenRawBalance: bigint;
 }
 
+interface RotationChainState {
+  sourceWalletId: string;
+  sourceAddress: string;
+  activeWalletId: string;
+  activeWalletAddress: string;
+  successfulSwapCount: number;
+  generation: number;
+}
+
 // Use WSOL from DEX constants
 const WSOL = KNOWN_MINTS.WSOL;
 const LAMPORTS_PER_SOL = 1_000_000_000;
 const SOL_RESERVE_LAMPORTS = 5_000_000; // keep some SOL for fees/rent
+const ROTATION_SOL_RESERVE_LAMPORTS = 25_000_000; // keep extra SOL for forced-sell + account cleanup
+const ROTATION_BOOTSTRAP_LAMPORTS = 1_000_000;
+const TRANSFER_FEE_BUFFER_LAMPORTS = 20_000;
+const MAX_FORCE_SELL_ATTEMPTS = 12;
+const MAX_FORCE_SELL_STAGNANT_ROUNDS = 5;
+const FORCE_SELL_BALANCE_POLL_ATTEMPTS = 6;
+const FORCE_SELL_BALANCE_POLL_DELAY_MS = 500;
+const FORCE_SELL_MAX_CHUNK_ATTEMPTS = 6;
+const FORCE_SELL_SLIPPAGE_LADDER_BPS = [300, 700, 1200, 2000, 3500, 5000, 7500, 9000];
+const MIN_TRANSFER_LAMPORTS = 1;
 
 export function VolumeControl() {
   const { rpcUrl, network } = useNetwork();
-  const { wallets, isLocked, getKeypairs } = useSecureWallet({ rpcUrl });
+  const {
+    wallets,
+    isLocked,
+    getKeypairs,
+    generateWallet,
+    removeWallet,
+    refreshBalances,
+  } = useSecureWallet({ rpcUrl });
   const { addToken } = useActiveTokens();
   const { addTrade } = useTxHistory();
   
@@ -259,6 +307,10 @@ export function VolumeControl() {
   const [jupiterApiKey, setJupiterApiKey] = useState(() => localStorage.getItem('jupiter_api_key') || '')
   const [useRealTrades, setUseRealTrades] = useState(false)
   const [selectedWalletIds, setSelectedWalletIds] = useState<string[]>([])
+  const [showRotationPasswordModal, setShowRotationPasswordModal] = useState(false)
+  const [rotationPasswordInput, setRotationPasswordInput] = useState('')
+  const [rotationError, setRotationError] = useState<string | null>(null)
+  const [isStarting, setIsStarting] = useState(false)
   const [resumeTick, setResumeTick] = useState(0)
   const [venueDetection, setVenueDetection] = useState<PoolVenueDetection | null>(null)
   const [feeProfile, setFeeProfile] = useState<PumpSwapFeeProfile | null>(null)
@@ -269,24 +321,39 @@ export function VolumeControl() {
   const isExecutingTradeRef = useRef(false)
   const lastTradeAttemptAtRef = useRef<number | null>(null)
   const requireBuyBeforeSellRef = useRef(true)
+  const rotationSessionPasswordRef = useRef<string | null>(null)
+  const rotationChainsRef = useRef<Map<string, RotationChainState>>(new Map())
 
-  const selectedWallets = selectedWalletIds.length > 0
-    ? wallets.filter(wallet => selectedWalletIds.includes(wallet.id))
-    : wallets
-  const totalSelectedBalanceSol = selectedWallets.reduce((sum, wallet) => sum + (wallet.balance || 0), 0)
-  const usableSelectedBalanceSol = selectedWallets.reduce((sum, wallet) => {
+  const sourceWallets = useMemo(
+    () => wallets.filter(wallet => !isRotationManagedWallet(wallet.name)),
+    [wallets]
+  )
+  const managedRotationWallets = useMemo(
+    () => wallets.filter(wallet => isRotationManagedWallet(wallet.name)),
+    [wallets]
+  )
+  const selectedSourceWallets = useMemo(
+    () => (selectedWalletIds.length > 0
+      ? sourceWallets.filter(wallet => selectedWalletIds.includes(wallet.id))
+      : sourceWallets),
+    [selectedWalletIds, sourceWallets]
+  )
+  const isRotationModeActive = useRealTrades && config.walletRotationEnabled
+
+  const totalSelectedBalanceSol = selectedSourceWallets.reduce((sum, wallet) => sum + (wallet.balance || 0), 0)
+  const usableSelectedBalanceSol = selectedSourceWallets.reduce((sum, wallet) => {
     const balance = wallet.balance || 0
     const spendable = Math.max(0, balance - (SOL_RESERVE_LAMPORTS / LAMPORTS_PER_SOL))
     return sum + spendable
   }, 0)
   
-  const updateConfig = (updates: Partial<VolumeConfig>) => {
+  const updateConfig = useCallback((updates: Partial<VolumeConfig>) => {
     setConfig(prev => {
       const newConfig = { ...prev, ...updates };
       saveConfig(newConfig);
       return newConfig;
     })
-  }
+  }, [])
   
   const handleIntensityChange = (intensity: VolumeConfig['intensity']) => {
     const presets = intensityConfigs[intensity]
@@ -305,6 +372,16 @@ export function VolumeControl() {
       localStorage.setItem('jupiter_api_key', jupiterApiKey);
     }
   }, [jupiterApiKey]);
+
+  useEffect(() => {
+    setSelectedWalletIds(prev => {
+      const next = prev.filter(walletId => sourceWallets.some(wallet => wallet.id === walletId));
+      if (next.length === prev.length && next.every((walletId, idx) => walletId === prev[idx])) {
+        return prev;
+      }
+      return next;
+    });
+  }, [wallets, sourceWallets]);
 
   useEffect(() => {
     const targetToken = config.targetToken.trim();
@@ -382,6 +459,520 @@ export function VolumeControl() {
     usableSelectedBalanceSol,
   ]);
 
+  const clearRotationRuntimeState = useCallback(() => {
+    rotationSessionPasswordRef.current = null;
+    rotationChainsRef.current.clear();
+    setRotationPasswordInput('');
+    setShowRotationPasswordModal(false);
+  }, []);
+
+  const pauseVolumeWithError = useCallback((message: string) => {
+    setRotationError(message);
+    alert(message);
+    setIsRunning(false);
+    setStartTime(null);
+    if (intervalRef.current) {
+      clearTimeout(intervalRef.current);
+      intervalRef.current = null;
+    }
+    requireBuyBeforeSellRef.current = true;
+    updateConfig({ enabled: false });
+    clearRotationRuntimeState();
+  }, [clearRotationRuntimeState, updateConfig]);
+
+  const sendSolTransfer = useCallback(async (
+    connection: Connection,
+    fromSigner: Keypair,
+    toPubkey: PublicKey,
+    lamports: number,
+    feePayerSigner?: Keypair,
+  ): Promise<void> => {
+    if (lamports < MIN_TRANSFER_LAMPORTS) {
+      return;
+    }
+
+    const feePayer = feePayerSigner ?? fromSigner;
+    const { blockhash } = await connection.getLatestBlockhash('confirmed');
+    const transaction = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: fromSigner.publicKey,
+        toPubkey,
+        lamports,
+      })
+    );
+    transaction.feePayer = feePayer.publicKey;
+    transaction.recentBlockhash = blockhash;
+    if (feePayer.publicKey.equals(fromSigner.publicKey)) {
+      transaction.sign(fromSigner);
+    } else {
+      transaction.sign(fromSigner, feePayer);
+    }
+
+    const signature = await connection.sendRawTransaction(transaction.serialize());
+    await connection.confirmTransaction(signature, 'confirmed');
+  }, []);
+
+  const getTargetWalletState = useCallback(async (
+    connection: Connection,
+    owner: PublicKey,
+    targetMint: PublicKey
+  ): Promise<{
+    solLamports: number;
+    tokenRawBalance: bigint;
+    tokenAccounts: Array<{ pubkey: PublicKey; amountRaw: bigint; programId: PublicKey }>;
+  }> => {
+    const [solLamports, tokenAccountsResp] = await Promise.all([
+      connection.getBalance(owner, 'confirmed'),
+      connection.getParsedTokenAccountsByOwner(owner, { mint: targetMint }, 'confirmed'),
+    ]);
+
+    const tokenAccounts = tokenAccountsResp.value.map(account => {
+      try {
+        const tokenAmount = account.account.data.parsed.info.tokenAmount;
+        return {
+          pubkey: account.pubkey,
+          amountRaw: BigInt(tokenAmount.amount as string),
+          programId: account.account.owner,
+        };
+      } catch {
+        return {
+          pubkey: account.pubkey,
+          amountRaw: 0n,
+          programId: account.account.owner,
+        };
+      }
+    });
+
+    const tokenRawBalance = tokenAccounts.reduce((sum, account) => sum + account.amountRaw, 0n);
+    return { solLamports, tokenRawBalance, tokenAccounts };
+  }, []);
+
+  const consolidateTargetTokenAccounts = useCallback(async (
+    connection: Connection,
+    ownerSigner: Keypair,
+    targetMint: PublicKey,
+    tokenAccounts: Array<{ pubkey: PublicKey; amountRaw: bigint; programId: PublicKey }>,
+  ): Promise<void> => {
+    const nonZeroAccounts = tokenAccounts.filter(account => account.amountRaw > 0n);
+    if (nonZeroAccounts.length === 0) {
+      return;
+    }
+
+    const tokenProgramId = nonZeroAccounts[0].programId;
+    const associatedAccount = getAssociatedTokenAddressSync(
+      targetMint,
+      ownerSigner.publicKey,
+      false,
+      tokenProgramId
+    );
+    const associatedExists = tokenAccounts.some(account => account.pubkey.equals(associatedAccount));
+    const associatedHasBalance = nonZeroAccounts.some(account => account.pubkey.equals(associatedAccount));
+    if (nonZeroAccounts.length === 1 && associatedHasBalance) {
+      return;
+    }
+
+    if (!associatedExists) {
+      const { blockhash } = await connection.getLatestBlockhash('confirmed');
+      const createAtaTx = new Transaction().add(
+        createAssociatedTokenAccountIdempotentInstruction(
+          ownerSigner.publicKey,
+          associatedAccount,
+          ownerSigner.publicKey,
+          targetMint,
+          tokenProgramId
+        )
+      );
+      createAtaTx.feePayer = ownerSigner.publicKey;
+      createAtaTx.recentBlockhash = blockhash;
+      createAtaTx.sign(ownerSigner);
+      const createAtaSig = await connection.sendRawTransaction(createAtaTx.serialize());
+      await connection.confirmTransaction(createAtaSig, 'confirmed');
+    }
+
+    for (const account of nonZeroAccounts) {
+      if (account.pubkey.equals(associatedAccount)) {
+        continue;
+      }
+      if (!account.programId.equals(tokenProgramId)) {
+        continue;
+      }
+
+      const { blockhash } = await connection.getLatestBlockhash('confirmed');
+      const transferTx = new Transaction().add(
+        createTransferInstruction(
+          account.pubkey,
+          associatedAccount,
+          ownerSigner.publicKey,
+          account.amountRaw,
+          [],
+          tokenProgramId
+        )
+      );
+      transferTx.feePayer = ownerSigner.publicKey;
+      transferTx.recentBlockhash = blockhash;
+      transferTx.sign(ownerSigner);
+      const transferSig = await connection.sendRawTransaction(transferTx.serialize());
+      await connection.confirmTransaction(transferSig, 'confirmed');
+    }
+  }, []);
+
+  const createDexConfig = useCallback((): DexConfig => {
+    return {
+      rpcUrl,
+      apiKey: jupiterApiKey || undefined,
+      slippageBps: 200,
+    };
+  }, [rpcUrl, jupiterApiKey]);
+
+  const forceSellAllTargetBalance = useCallback(async (
+    connection: Connection,
+    signer: Keypair,
+    targetMint: PublicKey,
+    dexConfig: DexConfig,
+  ): Promise<void> => {
+    let previousBalance: bigint | null = null;
+    let stagnantRounds = 0;
+    let lastFailureReason = 'unknown forced-sell failure';
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+    for (let attempt = 0; attempt < MAX_FORCE_SELL_ATTEMPTS; attempt++) {
+      const initialState = await getTargetWalletState(connection, signer.publicKey, targetMint);
+      if (initialState.tokenRawBalance === 0n) {
+        return;
+      }
+      if (initialState.tokenAccounts.some(account => account.amountRaw > 0n)) {
+        await consolidateTargetTokenAccounts(connection, signer, targetMint, initialState.tokenAccounts);
+      }
+
+      const walletState = await getTargetWalletState(connection, signer.publicKey, targetMint);
+      if (walletState.tokenRawBalance === 0n) {
+        return;
+      }
+
+      if (previousBalance !== null && walletState.tokenRawBalance >= previousBalance) {
+        stagnantRounds += 1;
+      } else {
+        stagnantRounds = 0;
+      }
+
+      if (stagnantRounds >= MAX_FORCE_SELL_STAGNANT_ROUNDS) {
+        throw new Error(`Forced sell made no progress. Last error: ${lastFailureReason}`);
+      }
+
+      const maxSafeRaw = BigInt(Number.MAX_SAFE_INTEGER);
+      const fullSellRaw = walletState.tokenRawBalance > maxSafeRaw
+        ? Number.MAX_SAFE_INTEGER
+        : Number(walletState.tokenRawBalance);
+
+      let attemptFailure = 'Unknown forced-sell error';
+      let swapResult: Awaited<ReturnType<typeof dexExecuteSwap>> | null = null;
+      const chunkCandidates: number[] = [];
+      let nextChunkRaw = fullSellRaw;
+      for (let chunkAttempt = 0; chunkAttempt < FORCE_SELL_MAX_CHUNK_ATTEMPTS; chunkAttempt++) {
+        chunkCandidates.push(nextChunkRaw);
+        if (nextChunkRaw <= 1) {
+          break;
+        }
+        nextChunkRaw = Math.max(1, Math.floor(nextChunkRaw / 2));
+      }
+
+      for (const chunkRaw of chunkCandidates) {
+        for (const slippageBps of FORCE_SELL_SLIPPAGE_LADDER_BPS) {
+          const adjustedDexConfig: DexConfig = {
+            ...dexConfig,
+            slippageBps,
+          };
+
+          try {
+            const quote = await getQuote(
+              config.selectedDex,
+              config.targetToken,
+              WSOL,
+              chunkRaw,
+              adjustedDexConfig
+            );
+
+            const attemptResult = await dexExecuteSwap(quote, signer, adjustedDexConfig);
+            if (!attemptResult.success) {
+              attemptFailure = attemptResult.error || 'Swap failed';
+              continue;
+            }
+
+            swapResult = attemptResult;
+            break;
+          } catch (error) {
+            attemptFailure = (error as Error).message || 'Quote/swap error';
+          }
+        }
+
+        if (swapResult?.success) {
+          break;
+        }
+      }
+
+      if (!swapResult?.success) {
+        lastFailureReason = attemptFailure;
+        previousBalance = walletState.tokenRawBalance;
+        await sleep(FORCE_SELL_BALANCE_POLL_DELAY_MS * (attempt + 1));
+        continue;
+      }
+
+      if (swapResult.txHash) {
+        try {
+          await connection.confirmTransaction(swapResult.txHash, 'confirmed');
+        } catch {
+          // Fallback to balance polling below; some RPCs lag transaction confirmation responses.
+        }
+      }
+
+      let observedImprovement = false;
+      for (let poll = 0; poll < FORCE_SELL_BALANCE_POLL_ATTEMPTS; poll++) {
+        await sleep(FORCE_SELL_BALANCE_POLL_DELAY_MS * (poll + 1));
+        const polledState = await getTargetWalletState(connection, signer.publicKey, targetMint);
+        if (polledState.tokenRawBalance === 0n || polledState.tokenRawBalance < walletState.tokenRawBalance) {
+          previousBalance = polledState.tokenRawBalance;
+          stagnantRounds = 0;
+          observedImprovement = true;
+          break;
+        }
+      }
+
+      if (!observedImprovement) {
+        previousBalance = walletState.tokenRawBalance;
+        lastFailureReason = `Swap landed but token balance did not decrease (attempt ${attempt + 1}).`;
+      }
+    }
+
+    const finalState = await getTargetWalletState(connection, signer.publicKey, targetMint);
+    throw new Error(
+      `Unable to fully sell target token after ${MAX_FORCE_SELL_ATTEMPTS} attempts. Remaining raw balance: ${finalState.tokenRawBalance.toString()}. Last error: ${lastFailureReason}`
+    );
+  }, [config.selectedDex, config.targetToken, getTargetWalletState, consolidateTargetTokenAccounts]);
+
+  const closeZeroBalanceTargetAccounts = useCallback(async (
+    connection: Connection,
+    ownerSigner: Keypair,
+    rentDestination: PublicKey,
+    feePayerSigner: Keypair,
+    tokenAccounts: Array<{ pubkey: PublicKey; amountRaw: bigint; programId: PublicKey }>,
+  ): Promise<void> => {
+    for (const tokenAccount of tokenAccounts) {
+      if (tokenAccount.amountRaw !== 0n) {
+        throw new Error('Cannot close target token account with non-zero balance.');
+      }
+
+      const { blockhash } = await connection.getLatestBlockhash('confirmed');
+      const transaction = new Transaction().add(
+        createCloseAccountInstruction(
+          tokenAccount.pubkey,
+          rentDestination,
+          ownerSigner.publicKey,
+          [],
+          tokenAccount.programId ?? TOKEN_PROGRAM_ID
+        )
+      );
+      transaction.feePayer = feePayerSigner.publicKey;
+      transaction.recentBlockhash = blockhash;
+      if (feePayerSigner.publicKey.equals(ownerSigner.publicKey)) {
+        transaction.sign(ownerSigner);
+      } else {
+        transaction.sign(ownerSigner, feePayerSigner);
+      }
+
+      const signature = await connection.sendRawTransaction(transaction.serialize());
+      await connection.confirmTransaction(signature, 'confirmed');
+    }
+  }, []);
+
+  const initializeRotationChains = useCallback(async (): Promise<number> => {
+    const sessionPassword = rotationSessionPasswordRef.current;
+    if (!sessionPassword) {
+      throw new Error('Rotation session password is required.');
+    }
+
+    const allKeypairs = getKeypairs();
+    if (allKeypairs.length === 0) {
+      throw new Error('No wallets available. Unlock your vault first.');
+    }
+
+    const keypairByAddress = new Map(allKeypairs.map(kp => [kp.publicKey.toBase58(), kp] as const));
+    const sourceCandidates = selectedSourceWallets.length > 0 ? selectedSourceWallets : sourceWallets;
+    if (sourceCandidates.length === 0) {
+      throw new Error('No source wallets available for rotation.');
+    }
+
+    const maxWalletsToUse = Math.max(1, Math.min(config.maxWallets || sourceCandidates.length, sourceCandidates.length));
+    const selectedSources = sourceCandidates.slice(0, maxWalletsToUse);
+    const connection = new Connection(rpcUrl, 'confirmed');
+    const initializedChains = new Map<string, RotationChainState>();
+
+    for (const sourceWallet of selectedSources) {
+      const sourceSigner = keypairByAddress.get(sourceWallet.address);
+      if (!sourceSigner) {
+        throw new Error(`Signer missing for source wallet ${sourceWallet.name}.`);
+      }
+
+      const managedWallet = await generateWallet(
+        buildRotationWalletName(sourceWallet.address, 1),
+        'burner',
+        sessionPassword
+      );
+      const refreshedKeypairs = getKeypairs();
+      const managedSigner = refreshedKeypairs.find(kp => kp.publicKey.toBase58() === managedWallet.address);
+      if (!managedSigner) {
+        throw new Error(`Generated rotation wallet signer unavailable for ${sourceWallet.name}.`);
+      }
+
+      const sourceBalance = await connection.getBalance(sourceSigner.publicKey, 'confirmed');
+      const spendableLamports = Math.max(0, sourceBalance - SOL_RESERVE_LAMPORTS);
+      if (spendableLamports <= 0) {
+        throw new Error(`Source wallet ${sourceWallet.name} has no spendable SOL.`);
+      }
+
+      await sendSolTransfer(
+        connection,
+        sourceSigner,
+        managedSigner.publicKey,
+        spendableLamports
+      );
+
+      initializedChains.set(sourceWallet.id, {
+        sourceWalletId: sourceWallet.id,
+        sourceAddress: sourceWallet.address,
+        activeWalletId: managedWallet.id,
+        activeWalletAddress: managedWallet.address,
+        successfulSwapCount: 0,
+        generation: 1,
+      });
+    }
+
+    rotationChainsRef.current = initializedChains;
+    await refreshBalances();
+    return initializedChains.size;
+  }, [
+    getKeypairs,
+    selectedSourceWallets,
+    sourceWallets,
+    config.maxWallets,
+    rpcUrl,
+    generateWallet,
+    sendSolTransfer,
+    refreshBalances,
+  ]);
+
+  const rotateWalletChain = useCallback(async (chain: RotationChainState): Promise<void> => {
+    const sessionPassword = rotationSessionPasswordRef.current;
+    if (!sessionPassword) {
+      throw new Error('Rotation session password is missing.');
+    }
+
+    let targetMintPubkey: PublicKey;
+    try {
+      targetMintPubkey = new PublicKey(config.targetToken);
+    } catch {
+      throw new Error('Invalid target token mint for rotation cleanup.');
+    }
+
+    const allKeypairs = getKeypairs();
+    const keypairByAddress = new Map(allKeypairs.map(kp => [kp.publicKey.toBase58(), kp] as const));
+    const oldSigner = keypairByAddress.get(chain.activeWalletAddress);
+    if (!oldSigner) {
+      throw new Error(`Active rotation signer not found (${chain.activeWalletAddress}).`);
+    }
+
+    const connection = new Connection(rpcUrl, 'confirmed');
+    const dexConfig = createDexConfig();
+
+    // Step 1: force-sell remaining target token balance.
+    await forceSellAllTargetBalance(connection, oldSigner, targetMintPubkey, dexConfig);
+
+    // Step 2: verify target token balance is fully cleared.
+    const postSellState = await getTargetWalletState(connection, oldSigner.publicKey, targetMintPubkey);
+    if (postSellState.tokenRawBalance !== 0n) {
+      throw new Error('Rotation aborted: target token balance remains after forced sell.');
+    }
+
+    // Step 3: create next managed rotation wallet.
+    const nextGeneration = chain.generation + 1;
+    const nextWallet = await generateWallet(
+      buildRotationWalletName(chain.sourceAddress, nextGeneration),
+      'burner',
+      sessionPassword
+    );
+    const refreshedKeypairs = getKeypairs();
+    const nextSigner = refreshedKeypairs.find(kp => kp.publicKey.toBase58() === nextWallet.address);
+    if (!nextSigner) {
+      throw new Error(`Failed to load signer for new rotation wallet ${nextWallet.address}.`);
+    }
+
+    // Step 4: bootstrap SOL to initialize new wallet on-chain (must satisfy rent-exempt minimum).
+    const [oldBalanceBeforeBootstrap, systemRentExemptLamports] = await Promise.all([
+      connection.getBalance(oldSigner.publicKey, 'confirmed'),
+      connection.getMinimumBalanceForRentExemption(0, 'confirmed'),
+    ]);
+    const requiredBootstrapLamports = Math.max(ROTATION_BOOTSTRAP_LAMPORTS, systemRentExemptLamports);
+    const maxBootstrapLamports = Math.max(0, oldBalanceBeforeBootstrap - TRANSFER_FEE_BUFFER_LAMPORTS);
+    if (maxBootstrapLamports < requiredBootstrapLamports) {
+      throw new Error(
+        `Insufficient SOL to initialize next rotation wallet. Need at least ${requiredBootstrapLamports + TRANSFER_FEE_BUFFER_LAMPORTS} lamports, have ${oldBalanceBeforeBootstrap}.`
+      );
+    }
+    await sendSolTransfer(
+      connection,
+      oldSigner,
+      nextSigner.publicKey,
+      requiredBootstrapLamports
+    );
+
+    // Step 5: close zero-balance target token accounts, recover rent to new wallet.
+    const closeCandidates = await getTargetWalletState(connection, oldSigner.publicKey, targetMintPubkey);
+    if (closeCandidates.tokenRawBalance !== 0n) {
+      throw new Error('Rotation aborted: target token balance changed before account close.');
+    }
+    await closeZeroBalanceTargetAccounts(
+      connection,
+      oldSigner,
+      nextSigner.publicKey,
+      nextSigner,
+      closeCandidates.tokenAccounts
+    );
+
+    // Step 6: drain remaining SOL with new wallet paying fee so old wallet can be fully emptied.
+    const oldBalanceBeforeDrain = await connection.getBalance(oldSigner.publicKey, 'confirmed');
+    if (oldBalanceBeforeDrain > 0) {
+      await sendSolTransfer(
+        connection,
+        oldSigner,
+        nextSigner.publicKey,
+        oldBalanceBeforeDrain,
+        nextSigner
+      );
+    }
+
+    // Step 7: remove retired managed wallet from vault.
+    await removeWallet(chain.activeWalletId, sessionPassword);
+
+    // Step 8: promote new wallet and reset chain counter.
+    chain.activeWalletId = nextWallet.id;
+    chain.activeWalletAddress = nextWallet.address;
+    chain.successfulSwapCount = 0;
+    chain.generation = nextGeneration;
+    rotationChainsRef.current.set(chain.sourceWalletId, chain);
+    await refreshBalances();
+  }, [
+    config.targetToken,
+    getKeypairs,
+    rpcUrl,
+    createDexConfig,
+    forceSellAllTargetBalance,
+    getTargetWalletState,
+    generateWallet,
+    sendSolTransfer,
+    closeZeroBalanceTargetAccounts,
+    removeWallet,
+    refreshBalances,
+  ]);
+
   // Execute real swap via selected DEX
   const executeRealSwap = useCallback(async (preferredBuy: boolean, targetAmountSol: number) => {
     const allKeypairs = getKeypairs();
@@ -389,7 +980,6 @@ export function VolumeControl() {
       throw new Error('No wallets available. Unlock your vault first.');
     }
 
-    // Check if selected DEX is implemented
     const swapper = getSwapper(config.selectedDex);
     if (!swapper.isImplemented) {
       throw new Error(`${swapper.name} is not yet implemented. Please use Jupiter.`);
@@ -402,28 +992,58 @@ export function VolumeControl() {
       throw new Error('Invalid target token mint address');
     }
 
-    const dexConfig: DexConfig = {
-      rpcUrl,
-      apiKey: jupiterApiKey || undefined,
-      slippageBps: 200, // 2% slippage
+    const keypairByAddress = new Map(allKeypairs.map(kp => [kp.publicKey.toBase58(), kp] as const));
+    const dexConfig = createDexConfig();
+
+    type RuntimeWalletCandidate = {
+      walletId: string;
+      walletAddress: string;
+      walletLabel: string;
+      signer: Keypair;
     };
 
-    const keypairByAddress = new Map(
-      allKeypairs.map(kp => [kp.publicKey.toBase58(), kp] as const)
-    );
+    let candidates: RuntimeWalletCandidate[] = [];
+    if (isRotationModeActive) {
+      const chains = Array.from(rotationChainsRef.current.values());
+      if (chains.length === 0) {
+        throw new Error('Rotation mode has no active chains. Stop and start again.');
+      }
 
-    const baseWallets = selectedWalletIds.length > 0
-      ? wallets.filter(w => selectedWalletIds.includes(w.id))
-      : wallets;
-    if (baseWallets.length === 0) {
-      throw new Error('No wallets selected for trading');
+      candidates = chains
+        .map(chain => {
+          const signer = keypairByAddress.get(chain.activeWalletAddress);
+          if (!signer) return null;
+          const walletMeta = wallets.find(w => w.id === chain.activeWalletId || w.address === chain.activeWalletAddress);
+          return {
+            walletId: chain.activeWalletId,
+            walletAddress: chain.activeWalletAddress,
+            walletLabel: walletMeta?.name || `${chain.activeWalletAddress.slice(0, 8)}...`,
+            signer,
+          };
+        })
+        .filter((candidate): candidate is RuntimeWalletCandidate => Boolean(candidate));
+    } else {
+      const baseWallets = selectedSourceWallets.length > 0 ? selectedSourceWallets : sourceWallets;
+      if (baseWallets.length === 0) {
+        throw new Error('No source wallets selected for trading.');
+      }
+
+      const maxWalletsToUse = Math.max(1, Math.min(config.maxWallets || baseWallets.length, baseWallets.length));
+      const shuffledWallets = [...baseWallets].sort(() => Math.random() - 0.5).slice(0, maxWalletsToUse);
+      candidates = shuffledWallets
+        .map(wallet => {
+          const signer = keypairByAddress.get(wallet.address);
+          if (!signer) return null;
+          return {
+            walletId: wallet.id,
+            walletAddress: wallet.address,
+            walletLabel: wallet.name || `${wallet.address.slice(0, 8)}...`,
+            signer,
+          };
+        })
+        .filter((candidate): candidate is RuntimeWalletCandidate => Boolean(candidate));
     }
 
-    const maxWalletsToUse = Math.max(1, Math.min(config.maxWallets || baseWallets.length, baseWallets.length));
-    const shuffledWallets = [...baseWallets].sort(() => Math.random() - 0.5).slice(0, maxWalletsToUse);
-    const candidates = shuffledWallets
-      .map(wallet => ({ wallet, signer: keypairByAddress.get(wallet.address) }))
-      .filter((candidate): candidate is { wallet: (typeof wallets)[number]; signer: (typeof allKeypairs)[number] } => Boolean(candidate.signer));
     if (candidates.length === 0) {
       throw new Error('No signer available for selected wallets. Unlock vault and retry.');
     }
@@ -437,7 +1057,7 @@ export function VolumeControl() {
     const chooseSellAmountRaw = (tokenRawBalance: bigint, forceMax: boolean): bigint => {
       if (tokenRawBalance <= 0n) return 0n;
       if (forceMax || tokenRawBalance < 1000n) return tokenRawBalance;
-      const percentage = BigInt(25 + Math.floor(Math.random() * 51)); // 25-75%
+      const percentage = BigInt(25 + Math.floor(Math.random() * 51));
       const partialAmount = (tokenRawBalance * percentage) / 100n;
       return partialAmount > 0n ? partialAmount : tokenRawBalance;
     };
@@ -448,8 +1068,10 @@ export function VolumeControl() {
       outputMint: string;
       amountRaw: number;
       amountSolEquivalent: number;
-      wallet: (typeof wallets)[number];
-      signer: (typeof allKeypairs)[number];
+      walletId: string;
+      walletAddress: string;
+      walletLabel: string;
+      signer: Keypair;
       tokenRawBalance: bigint;
       forceSellMax: boolean;
     };
@@ -463,27 +1085,18 @@ export function VolumeControl() {
     for (const candidate of candidates) {
       let walletState: WalletRuntimeState;
       try {
-        const owner = new PublicKey(candidate.wallet.address);
-        const [solLamports, tokenAccounts] = await Promise.all([
-          connection.getBalance(owner, 'confirmed'),
-          connection.getParsedTokenAccountsByOwner(owner, { mint: targetMintPubkey }, 'confirmed'),
-        ]);
-
-        walletState = tokenAccounts.value.reduce<WalletRuntimeState>((acc, account) => {
-          try {
-            const tokenAmount = account.account.data.parsed.info.tokenAmount;
-            acc.tokenRawBalance += BigInt(tokenAmount.amount as string);
-          } catch {
-            // Ignore malformed parsed account and continue.
-          }
-          return acc;
-        }, { solLamports, tokenRawBalance: 0n });
+        walletState = await getTargetWalletState(
+          connection,
+          new PublicKey(candidate.walletAddress),
+          targetMintPubkey
+        );
       } catch (walletStateError) {
-        console.warn('Skipping wallet due to balance fetch error:', candidate.wallet.address, walletStateError);
+        console.warn('Skipping wallet due to balance fetch error:', candidate.walletAddress, walletStateError);
         continue;
       }
 
-      const spendableLamports = Math.max(0, walletState.solLamports - SOL_RESERVE_LAMPORTS);
+      const reserveLamports = isRotationModeActive ? ROTATION_SOL_RESERVE_LAMPORTS : SOL_RESERVE_LAMPORTS;
+      const spendableLamports = Math.max(0, walletState.solLamports - reserveLamports);
       const canBuy = spendableLamports >= minBuyLamports;
       const hasTokenBalance = walletState.tokenRawBalance > 0n;
 
@@ -496,7 +1109,9 @@ export function VolumeControl() {
           outputMint: config.targetToken,
           amountRaw,
           amountSolEquivalent: amountRaw / LAMPORTS_PER_SOL,
-          wallet: candidate.wallet,
+          walletId: candidate.walletId,
+          walletAddress: candidate.walletAddress,
+          walletLabel: candidate.walletLabel,
           signer: candidate.signer,
           tokenRawBalance: walletState.tokenRawBalance,
           forceSellMax: false,
@@ -514,7 +1129,9 @@ export function VolumeControl() {
           outputMint: WSOL,
           amountRaw,
           amountSolEquivalent: targetAmountSol,
-          wallet: candidate.wallet,
+          walletId: candidate.walletId,
+          walletAddress: candidate.walletAddress,
+          walletLabel: candidate.walletLabel,
           signer: candidate.signer,
           tokenRawBalance: walletState.tokenRawBalance,
           forceSellMax: forceMax,
@@ -552,11 +1169,12 @@ export function VolumeControl() {
 
     try {
       const swapResult = await runPlan(chosenPlan);
-
       return {
         success: true,
         txHash: swapResult.txHash,
-        wallet: swapResult.wallet,
+        wallet: chosenPlan.walletLabel,
+        executedWalletId: chosenPlan.walletId,
+        executedWalletAddress: chosenPlan.walletAddress,
         type: chosenPlan.isBuy ? 'buy' as const : 'sell' as const,
         amountSol: chosenPlan.amountSolEquivalent,
       };
@@ -570,7 +1188,9 @@ export function VolumeControl() {
             return {
               success: true,
               txHash: retryResult.txHash,
-              wallet: retryResult.wallet,
+              wallet: retryPlan.walletLabel,
+              executedWalletId: retryPlan.walletId,
+              executedWalletAddress: retryPlan.walletAddress,
               type: 'sell' as const,
               amountSol: retryPlan.amountSolEquivalent,
             };
@@ -587,48 +1207,132 @@ export function VolumeControl() {
     config.targetToken,
     config.maxWallets,
     config.minSwapSol,
-    selectedWalletIds,
+    sourceWallets,
+    selectedSourceWallets,
     wallets,
     rpcUrl,
-    jupiterApiKey,
+    createDexConfig,
+    getTargetWalletState,
+    isRotationModeActive,
   ]);
 
-  const handleToggle = () => {
-    if (!isRunning) {
-      // Starting
-      if (!config.targetToken) {
-        alert('Please enter a target token mint address');
-        return;
+  const stopBoosting = useCallback(() => {
+    setStartTime(null);
+    if (intervalRef.current) {
+      clearTimeout(intervalRef.current);
+      intervalRef.current = null;
+    }
+    requireBuyBeforeSellRef.current = true;
+    setIsRunning(false);
+    updateConfig({ enabled: false });
+    clearRotationRuntimeState();
+    setIsStarting(false);
+  }, [clearRotationRuntimeState, updateConfig]);
+
+  const startBoosting = useCallback(async () => {
+    if (isStarting) return;
+
+    if (!config.targetToken) {
+      throw new Error('Please enter a target token mint address');
+    }
+    if (useRealTrades && !jupiterApiKey) {
+      throw new Error('Please enter your Jupiter API key for real trades');
+    }
+    if (useRealTrades && isLocked) {
+      throw new Error('Please unlock your wallet vault first (go to Wallets page)');
+    }
+    if (!useRealTrades && config.walletRotationEnabled) {
+      throw new Error('Wallet rotation mode only runs with real trades enabled.');
+    }
+    if (isRotationModeActive && !rotationSessionPasswordRef.current) {
+      throw new Error('Enter your vault password to start rotation mode.');
+    }
+
+    setIsStarting(true);
+    setRotationError(null);
+    try {
+      let activeWalletCount = 0;
+      if (isRotationModeActive) {
+        activeWalletCount = await initializeRotationChains();
+      } else {
+        rotationChainsRef.current.clear();
+        if (!useRealTrades) {
+          activeWalletCount = Math.max(1, config.maxWallets || 1);
+        } else {
+          const baseWallets = selectedSourceWallets.length > 0 ? selectedSourceWallets : sourceWallets;
+          if (baseWallets.length === 0) {
+            throw new Error('No source wallets available for trading.');
+          }
+          activeWalletCount = Math.max(1, Math.min(config.maxWallets || baseWallets.length, baseWallets.length));
+        }
       }
-      if (useRealTrades && !jupiterApiKey) {
-        alert('Please enter your Jupiter API key for real trades');
-        return;
-      }
-      if (useRealTrades && isLocked) {
-        alert('Please unlock your wallet vault first (go to Wallets page)');
-        return;
-      }
+
       requireBuyBeforeSellRef.current = true;
       setStartTime(Date.now());
-      setStats(prev => ({ ...prev, totalVolume24h: 0, swapsExecuted: 0, currentRate: 0 }));
+      setStats({
+        totalVolume24h: 0,
+        swapsExecuted: 0,
+        currentRate: 0,
+        activeWallets: activeWalletCount,
+        successRate: 0,
+      });
       setTxLogs([]);
-      
-      // Add token to active tokens for Detection Dashboard
+
       addToken({
         mint: config.targetToken,
         source: 'volume'
       });
-    } else {
-      // Stopping
-      setStartTime(null);
-      if (intervalRef.current) {
-        clearTimeout(intervalRef.current);
-        intervalRef.current = null;
-      }
-      requireBuyBeforeSellRef.current = true;
+
+      setIsRunning(true);
+      updateConfig({ enabled: true });
+    } finally {
+      setIsStarting(false);
     }
-    setIsRunning(!isRunning)
-    updateConfig({ enabled: !isRunning })
+  }, [
+    isStarting,
+    config,
+    useRealTrades,
+    jupiterApiKey,
+    isLocked,
+    isRotationModeActive,
+    initializeRotationChains,
+    selectedSourceWallets,
+    sourceWallets,
+    addToken,
+    updateConfig,
+  ]);
+
+  const handleRotationPasswordConfirm = useCallback(() => {
+    if (!rotationPasswordInput) {
+      setRotationError('Vault password is required for rotation mode.');
+      return;
+    }
+    rotationSessionPasswordRef.current = rotationPasswordInput;
+    setShowRotationPasswordModal(false);
+    setRotationPasswordInput('');
+    void startBoosting().catch(error => {
+      clearRotationRuntimeState();
+      setRotationError((error as Error).message);
+      updateConfig({ enabled: false });
+    });
+  }, [rotationPasswordInput, startBoosting, clearRotationRuntimeState, updateConfig]);
+
+  const handleToggle = () => {
+    if (isRunning) {
+      stopBoosting();
+      return;
+    }
+
+    if (isRotationModeActive && !rotationSessionPasswordRef.current) {
+      setShowRotationPasswordModal(true);
+      return;
+    }
+
+    void startBoosting().catch(error => {
+      clearRotationRuntimeState();
+      setRotationError((error as Error).message);
+      updateConfig({ enabled: false });
+    });
   }
 
   const getNextIntervalMs = useCallback(() => {
@@ -696,6 +1400,29 @@ export function VolumeControl() {
         if (result.type === 'buy') {
           requireBuyBeforeSellRef.current = false;
         }
+
+        if (isRotationModeActive) {
+          const matchingChain = Array.from(rotationChainsRef.current.values()).find(chain =>
+            chain.activeWalletId === result.executedWalletId ||
+            chain.activeWalletAddress === result.executedWalletAddress
+          );
+
+          if (matchingChain) {
+            matchingChain.successfulSwapCount += 1;
+            rotationChainsRef.current.set(matchingChain.sourceWalletId, matchingChain);
+
+            if (matchingChain.successfulSwapCount >= Math.max(1, config.walletRotationIntervalSuccesses)) {
+              try {
+                await rotateWalletChain(matchingChain);
+              } catch (rotationErr) {
+                pauseVolumeWithError(
+                  `Rotation cleanup failed for source ${matchingChain.sourceAddress.slice(0, 8)}...: ${(rotationErr as Error).message}`
+                );
+                return;
+              }
+            }
+          }
+        }
       } catch (err) {
         console.error('Swap failed:', err);
         setTxLogs(prev => prev.map(tx => 
@@ -746,7 +1473,16 @@ export function VolumeControl() {
         requireBuyBeforeSellRef.current = false;
       }
     }
-  }, [config, useRealTrades, executeRealSwap, addTrade, startTime]);
+  }, [
+    config,
+    useRealTrades,
+    executeRealSwap,
+    addTrade,
+    startTime,
+    isRotationModeActive,
+    rotateWalletChain,
+    pauseVolumeWithError,
+  ]);
 
   // Transaction generation loop
   useEffect(() => {
@@ -818,6 +1554,12 @@ export function VolumeControl() {
     };
   }, [isRunning, config.maxIntervalMs]);
 
+  useEffect(() => {
+    return () => {
+      clearRotationRuntimeState();
+    };
+  }, [clearRotationRuntimeState]);
+
   const estimateWarnings = [
     ...(venueDetection?.warnings ?? []),
     ...(feeProfile?.warnings ?? []),
@@ -842,11 +1584,12 @@ export function VolumeControl() {
         </div>
         <button
           onClick={handleToggle}
+          disabled={isStarting}
           className={`px-6 py-2.5 rounded-lg font-medium flex items-center gap-2 transition-colors ${
             isRunning
               ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
               : 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
-          }`}
+          } ${isStarting ? 'opacity-70 cursor-not-allowed' : ''}`}
         >
           {isRunning ? (
             <>
@@ -856,11 +1599,17 @@ export function VolumeControl() {
           ) : (
             <>
               <Play className="w-4 h-4" />
-              Start Boosting
+              {isStarting ? 'Starting...' : 'Start Boosting'}
             </>
           )}
         </button>
       </div>
+
+      {rotationError && (
+        <div className="p-3 rounded-lg border border-red-500/40 bg-red-500/10">
+          <p className="text-sm text-red-200">{rotationError}</p>
+        </div>
+      )}
       
       {/* Stats Overview */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -1013,12 +1762,12 @@ export function VolumeControl() {
                     <CheckCircle className="w-5 h-5 text-emerald-400" />
                     <div>
                       <p className="text-sm text-emerald-400 font-medium">Wallet Ready</p>
-                      <p className="text-xs text-slate-400">{wallets.length} wallet(s) available</p>
+                      <p className="text-xs text-slate-400">{sourceWallets.length} source wallet(s) available</p>
                     </div>
                   </>
                 )}
               </div>
-              {!isLocked && wallets.length > 0 && (
+              {!isLocked && sourceWallets.length > 0 && (
                 <div className="pt-3 border-t border-slate-700/50">
                   <div className="flex justify-between items-center mb-3">
                     <span className="text-sm text-slate-400">Available Balance:</span>
@@ -1027,9 +1776,9 @@ export function VolumeControl() {
                     </span>
                   </div>
                   
-                  <p className="text-xs text-slate-400 mb-2">Select wallets to use:</p>
+                  <p className="text-xs text-slate-400 mb-2">Select source wallets to use:</p>
                   <div className="space-y-2 max-h-40 overflow-y-auto">
-                    {wallets.map((w, i) => {
+                    {sourceWallets.map((w, i) => {
                       const isSelected = selectedWalletIds.includes(w.id);
                       return (
                         <label
@@ -1059,8 +1808,26 @@ export function VolumeControl() {
                     })}
                   </div>
                   {selectedWalletIds.length === 0 && (
-                    <p className="text-xs text-yellow-400 mt-2">⚠️ No wallets selected — will use all wallets</p>
+                    <p className="text-xs text-yellow-400 mt-2">⚠️ No wallets selected — will use all source wallets</p>
                   )}
+                </div>
+              )}
+              {!isLocked && managedRotationWallets.length > 0 && (
+                <div className="pt-3 border-t border-slate-700/50 mt-3">
+                  <p className="text-xs text-amber-300 mb-2">
+                    {ROTATION_WALLET_PREFIX} managed wallets (read-only): {managedRotationWallets.length}
+                  </p>
+                  <div className="space-y-2 max-h-32 overflow-y-auto">
+                    {managedRotationWallets.map((wallet) => (
+                      <div
+                        key={wallet.id}
+                        className="flex items-center justify-between p-2 rounded-lg bg-slate-800/60 border border-slate-700"
+                      >
+                        <span className="text-xs text-slate-300">{wallet.name}</span>
+                        <span className="text-xs text-slate-400">{(wallet.balance || 0).toFixed(4)} SOL</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -1100,6 +1867,43 @@ export function VolumeControl() {
               max={100}
               className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-emerald-500"
             />
+          </div>
+
+          {/* Wallet Rotation Mode */}
+          <div className="space-y-3 p-3 rounded-lg border border-slate-700 bg-slate-900/40">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-white font-medium">Wallet Rotation Mode</p>
+                <p className="text-xs text-slate-400">
+                  Create managed burner wallets and rotate per successful swap count.
+                </p>
+              </div>
+              <button
+                onClick={() => updateConfig({ walletRotationEnabled: !config.walletRotationEnabled })}
+                disabled={!useRealTrades}
+                className={`relative w-14 h-7 rounded-full transition-colors ${
+                  config.walletRotationEnabled ? 'bg-amber-500' : 'bg-slate-700'
+                } ${!useRealTrades ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <div className={`absolute top-1 w-5 h-5 rounded-full bg-white transition-transform ${
+                  config.walletRotationEnabled ? 'translate-x-8' : 'translate-x-1'
+                }`} />
+              </button>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs text-slate-500">Rotate every successful swaps</label>
+              <input
+                type="number"
+                min={1}
+                value={config.walletRotationIntervalSuccesses}
+                onChange={(e) => updateConfig({ walletRotationIntervalSuccesses: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+                disabled={!config.walletRotationEnabled}
+                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-500 disabled:opacity-60"
+              />
+            </div>
+            {!useRealTrades && (
+              <p className="text-xs text-yellow-400">Enable real trades to use wallet rotation.</p>
+            )}
           </div>
           
           {/* Intensity */}
@@ -1592,6 +2396,50 @@ export function VolumeControl() {
           </div>
         )}
       </div>
+
+      {showRotationPasswordModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="w-full max-w-md mx-4 rounded-xl border border-slate-700 bg-slate-900 p-6 space-y-4">
+            <h3 className="text-lg font-semibold text-white">Rotation Mode Authorization</h3>
+            <p className="text-sm text-slate-400">
+              Enter your vault password once for this run. It stays in memory only and clears when volume mode stops.
+            </p>
+            <div className="space-y-2">
+              <label className="text-xs text-slate-500">Vault Password</label>
+              <input
+                type="password"
+                value={rotationPasswordInput}
+                onChange={(e) => setRotationPasswordInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleRotationPasswordConfirm();
+                  }
+                }}
+                autoFocus
+                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-amber-500"
+                placeholder="Enter vault password"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowRotationPasswordModal(false);
+                  setRotationPasswordInput('');
+                }}
+                className="flex-1 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRotationPasswordConfirm}
+                className="flex-1 px-4 py-2 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 rounded-lg text-amber-300"
+              >
+                Start Rotation
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

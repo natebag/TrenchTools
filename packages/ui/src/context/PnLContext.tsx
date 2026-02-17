@@ -13,6 +13,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from 'react';
 import { useTxHistory } from './TxHistoryContext';
+import { useWallet } from './WalletContext';
 
 const STORAGE_KEY = 'trench_pnl_data';
 const DEXSCREENER_API = 'https://api.dexscreener.com/latest/dex/tokens';
@@ -239,6 +240,7 @@ const PnLContext = createContext<PnLContextType | null>(null);
 
 export function PnLProvider({ children }: { children: ReactNode }) {
   const { trades } = useTxHistory();
+  const { sniperConfig } = useWallet();
   
   const [state, setState] = useState<PnLState>(() => loadPnLState());
   const [loading, setLoading] = useState(true);
@@ -246,6 +248,11 @@ export function PnLProvider({ children }: { children: ReactNode }) {
   
   const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastTradesHashRef = useRef<string>('');
+  const positionsRef = useRef(state.positions);
+
+  useEffect(() => {
+    positionsRef.current = state.positions;
+  }, [state.positions]);
 
   // Calculate positions from trades
   const recalculateFromTrades = useCallback(() => {
@@ -373,9 +380,10 @@ export function PnLProvider({ children }: { children: ReactNode }) {
 
   // Refresh prices from DexScreener
   const refreshPrices = useCallback(async () => {
-    const tokenMints = Array.from(state.positions.keys()).filter(
+    const positions = positionsRef.current;
+    const tokenMints = Array.from(positions.keys()).filter(
       mint => {
-        const pos = state.positions.get(mint);
+        const pos = positions.get(mint);
         return pos && pos.tokensHeld > 0;
       }
     );
@@ -461,7 +469,7 @@ export function PnLProvider({ children }: { children: ReactNode }) {
     } finally {
       setRefreshing(false);
     }
-  }, [state.positions]);
+  }, []);
 
   // Clear all P&L data
   const clearPnLData = useCallback(() => {
@@ -491,6 +499,15 @@ export function PnLProvider({ children }: { children: ReactNode }) {
 
   // Set up price refresh interval
   useEffect(() => {
+    if (!sniperConfig.enabled) {
+      if (refreshIntervalRef.current) {
+        clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
+      }
+      setRefreshing(false);
+      return;
+    }
+
     refreshPrices();
     
     refreshIntervalRef.current = setInterval(() => {
@@ -500,9 +517,10 @@ export function PnLProvider({ children }: { children: ReactNode }) {
     return () => {
       if (refreshIntervalRef.current) {
         clearInterval(refreshIntervalRef.current);
+        refreshIntervalRef.current = null;
       }
     };
-  }, [refreshPrices]);
+  }, [refreshPrices, sniperConfig.enabled]);
 
   // Calculate stats
   const stats: PnLStats = (() => {

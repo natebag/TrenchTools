@@ -10,7 +10,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsup",
-    "dev": "tsx src/index.ts",
+    "dev": "tsup --watch",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit"
   },

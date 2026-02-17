@@ -7,17 +7,17 @@ const API_PORT = parseInt(process.env.API_PORT || '3001', 10);
 const ALERT_CHAT_ID = process.env.ALERT_CHAT_ID;
 
 async function main() {
-  if (!BOT_TOKEN) {
-    console.error('❌ TELEGRAM_BOT_TOKEN not set in environment');
-    console.error('   Create a .env file with: TELEGRAM_BOT_TOKEN=your_token');
-    process.exit(1);
-  }
-
   console.log('🎯 TrenchSniper Bot starting...');
 
   // Create and start Express server
   const server = createServer(API_PORT);
   await server.start();
+
+  if (!BOT_TOKEN) {
+    console.warn('⚠️  TELEGRAM_BOT_TOKEN not set; running API server only');
+    console.warn('   Create a .env file with: TELEGRAM_BOT_TOKEN=your_token');
+    return;
+  }
 
   // Create bot
   const bot = createBot(BOT_TOKEN);

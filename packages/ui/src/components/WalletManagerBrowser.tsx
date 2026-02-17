@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { useSecureWallet } from '@/hooks/useSecureWallet';
 import { useNetwork } from '@/context/NetworkContext';
+import { isRotationManagedWallet } from '@/lib/volumeRotation';
 
 export function WalletManagerBrowser() {
   const { rpcUrl } = useNetwork();
@@ -272,6 +273,9 @@ export function WalletManagerBrowser() {
     </div>
   );
 
+  const standardWallets = wallets.filter(wallet => !isRotationManagedWallet(wallet.name));
+  const rotationManagedWallets = wallets.filter(wallet => isRotationManagedWallet(wallet.name));
+
   return (
     <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
       {/* Header */}
@@ -401,8 +405,25 @@ export function WalletManagerBrowser() {
 
       {/* Wallets Grid */}
       {!isLocked && wallets.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {wallets.map(renderWalletCard)}
+        <div className="space-y-6">
+          {standardWallets.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-300 mb-3">Primary Wallets</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {standardWallets.map(renderWalletCard)}
+              </div>
+            </div>
+          )}
+          {rotationManagedWallets.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-amber-300 mb-3">
+                Managed Rotation Wallets ({rotationManagedWallets.length})
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {rotationManagedWallets.map(renderWalletCard)}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

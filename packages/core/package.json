@@ -23,14 +23,6 @@
       "import": "./dist/trading/index.js",
       "types": "./dist/trading/index.d.ts"
     },
-    "./connection": {
-      "import": "./dist/connection/index.js",
-      "types": "./dist/connection/index.d.ts"
-    },
-    "./config": {
-      "import": "./dist/config/index.js",
-      "types": "./dist/config/index.d.ts"
-    },
     "./browser": {
       "import": "./dist/browser/index.js",
       "types": "./dist/browser/index.d.ts"
