@@ -1,7 +1,57 @@
+import { useEffect, useState } from 'react';
 import { useNetwork } from '@/context/NetworkContext';
 
 export function SettingsPanel() {
-  const { network, rpcUrl, setNetwork } = useNetwork();
+  const {
+    network,
+    rpcUrl,
+    defaultRpcUrl,
+    customRpcUrl,
+    isCustomRpc,
+    setNetwork,
+    setCustomRpcUrl,
+    clearCustomRpc,
+  } = useNetwork();
+  const [rpcInput, setRpcInput] = useState(customRpcUrl ?? '');
+  const [rpcError, setRpcError] = useState('');
+  const [rpcSaved, setRpcSaved] = useState(false);
+
+  useEffect(() => {
+    setRpcInput(customRpcUrl ?? '');
+    setRpcError('');
+  }, [customRpcUrl]);
+
+  const saveCustomRpc = () => {
+    const next = rpcInput.trim();
+    if (!next) {
+      setRpcError('RPC URL is required.');
+      setRpcSaved(false);
+      return;
+    }
+
+    try {
+      const parsed = new URL(next);
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+        setRpcError('RPC URL must start with http:// or https://');
+        setRpcSaved(false);
+        return;
+      }
+    } catch {
+      setRpcError('Enter a valid RPC URL.');
+      setRpcSaved(false);
+      return;
+    }
+
+    setCustomRpcUrl(next);
+    setRpcError('');
+    setRpcSaved(true);
+  };
+
+  const resetCustomRpc = () => {
+    clearCustomRpc();
+    setRpcSaved(false);
+    setRpcError('');
+  };
 
   return (
     <div className="space-y-6">
@@ -54,13 +104,38 @@ export function SettingsPanel() {
             </label>
             <input
               type="text"
-              value={rpcUrl}
-              readOnly
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-slate-400 cursor-not-allowed"
+              value={rpcInput}
+              onChange={(e) => {
+                setRpcInput(e.target.value);
+                setRpcSaved(false);
+                if (rpcError) setRpcError('');
+              }}
+              placeholder="https://your-rpc-provider.com"
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-slate-100"
             />
             <p className="text-xs text-slate-500 mt-1">
-              RPC is set automatically based on network selection
+              Current endpoint: {rpcUrl}
             </p>
+            <p className="text-xs text-slate-500 mt-1">
+              Network default: {defaultRpcUrl}
+            </p>
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={saveCustomRpc}
+                className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-medium text-white"
+              >
+                Save Manual RPC
+              </button>
+              <button
+                onClick={resetCustomRpc}
+                disabled={!isCustomRpc}
+                className="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium text-slate-100"
+              >
+                Use Network Default
+              </button>
+            </div>
+            {rpcError && <p className="text-xs text-red-400 mt-2">{rpcError}</p>}
+            {rpcSaved && !rpcError && <p className="text-xs text-emerald-400 mt-2">Manual RPC saved.</p>}
           </div>
 
           <div className="pt-4 border-t border-slate-700">
@@ -73,8 +148,10 @@ export function SettingsPanel() {
                 </span>
               </div>
               <div className="bg-slate-800/50 rounded-lg p-3">
-                <span className="text-slate-500">Status:</span>
-                <span className="ml-2 text-emerald-400 font-medium">Connected</span>
+                <span className="text-slate-500">RPC Mode:</span>
+                <span className={`ml-2 font-medium ${isCustomRpc ? 'text-blue-400' : 'text-emerald-400'}`}>
+                  {isCustomRpc ? 'Manual' : 'Default'}
+                </span>
               </div>
             </div>
           </div>

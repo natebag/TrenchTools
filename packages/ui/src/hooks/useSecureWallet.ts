@@ -12,6 +12,8 @@ import {
   type SecureWallet,
 } from '@/lib/browserWallet';
 
+const SECURE_WALLET_STATE_EVENT = 'secure-wallet-state-changed';
+
 // ============ Types ============
 
 export interface UseSecureWalletOptions {
@@ -59,9 +61,8 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
   
   const manager = getWalletManager();
   // Connection is created fresh in refreshBalances to use current rpcUrl
-  
-  // Initialize state from manager
-  useEffect(() => {
+
+  const syncStateFromManager = useCallback(() => {
     const state = manager.getState();
     setIsLocked(state.isLocked);
     setHasVault(state.hasVault);
@@ -69,10 +70,30 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
     if (!state.isLocked) {
       const unlockedWallets = manager.getUnlockedWallets();
       setWallets(unlockedWallets as SecureWallet[]);
-    } else {
-      setWallets([]);
+      return;
     }
+
+    setWallets([]);
   }, [manager]);
+
+  const broadcastWalletStateChange = useCallback(() => {
+    window.dispatchEvent(new Event(SECURE_WALLET_STATE_EVENT));
+  }, []);
+  
+  // Initialize state from manager
+  useEffect(() => {
+    syncStateFromManager();
+  }, [syncStateFromManager]);
+
+  // Keep all mounted hook consumers in sync when vault state changes elsewhere
+  useEffect(() => {
+    const handleStateChanged = () => {
+      syncStateFromManager();
+    };
+
+    window.addEventListener(SECURE_WALLET_STATE_EVENT, handleStateChanged);
+    return () => window.removeEventListener(SECURE_WALLET_STATE_EVENT, handleStateChanged);
+  }, [syncStateFromManager]);
   
   // Fetch balances for all wallets
   const refreshBalances = useCallback(async () => {
@@ -161,20 +182,22 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
       setWallets(loadedWallets as SecureWallet[]);
       setIsLocked(false);
       setHasVault(true);
+      broadcastWalletStateChange();
     } catch (err) {
       setError((err as Error).message);
       throw err;
     } finally {
       setIsLoading(false);
     }
-  }, [manager]);
+  }, [manager, broadcastWalletStateChange]);
   
   // Lock vault
   const lock = useCallback(() => {
     manager.lock();
     setWallets([]);
     setIsLocked(true);
-  }, [manager]);
+    broadcastWalletStateChange();
+  }, [manager, broadcastWalletStateChange]);
   
   // Generate single wallet
   const generateWallet = useCallback(async (
@@ -191,6 +214,7 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
       setWallets(prev => [...prev, secureWallet]);
       setHasVault(true);
       setIsLocked(false);
+      broadcastWalletStateChange();
       return secureWallet;
     } catch (err) {
       setError((err as Error).message);
@@ -198,7 +222,7 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
     } finally {
       setIsLoading(false);
     }
-  }, [manager]);
+  }, [manager, broadcastWalletStateChange]);
   
   // Generate multiple wallets
   const generateWallets = useCallback(async (
@@ -216,6 +240,7 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
       setWallets(prev => [...prev, ...secureWallets]);
       setHasVault(true);
       setIsLocked(false);
+      broadcastWalletStateChange();
       return secureWallets;
     } catch (err) {
       setError((err as Error).message);
@@ -223,7 +248,7 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
     } finally {
       setIsLoading(false);
     }
-  }, [manager]);
+  }, [manager, broadcastWalletStateChange]);
   
   // Import wallet from secret key
   const importWallet = useCallback(async (
@@ -241,6 +266,7 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
       setWallets(prev => [...prev, secureWallet]);
       setHasVault(true);
       setIsLocked(false);
+      broadcastWalletStateChange();
       return secureWallet;
     } catch (err) {
       setError((err as Error).message);
@@ -248,7 +274,7 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
     } finally {
       setIsLoading(false);
     }
-  }, [manager]);
+  }, [manager, broadcastWalletStateChange]);
   
   // Remove wallet
   const removeWallet = useCallback(async (walletId: string, password: string) => {
@@ -258,13 +284,14 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
     try {
       await manager.removeWallet(walletId, password);
       setWallets(prev => prev.filter(w => w.id !== walletId));
+      broadcastWalletStateChange();
     } catch (err) {
       setError((err as Error).message);
       throw err;
     } finally {
       setIsLoading(false);
     }
-  }, [manager]);
+  }, [manager, broadcastWalletStateChange]);
   
   // Export backup
   const exportBackup = useCallback(async (password: string): Promise<string> => {
@@ -291,13 +318,14 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
       setWallets(importedWallets as SecureWallet[]);
       setHasVault(true);
       setIsLocked(false);
+      broadcastWalletStateChange();
     } catch (err) {
       setError((err as Error).message);
       throw err;
     } finally {
       setIsLoading(false);
     }
-  }, [manager]);
+  }, [manager, broadcastWalletStateChange]);
   
   // Change password
   const changePassword = useCallback(async (oldPassword: string, newPassword: string) => {
@@ -320,7 +348,8 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
     setWallets([]);
     setIsLocked(true);
     setHasVault(false);
-  }, [manager]);
+    broadcastWalletStateChange();
+  }, [manager, broadcastWalletStateChange]);
   
   // Clear error
   const clearError = useCallback(() => {
