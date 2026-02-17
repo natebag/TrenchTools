@@ -1,9 +1,74 @@
 import { Context } from 'grammy';
+import { Connection, PublicKey } from '@solana/web3.js';
+import {
+  detectTokenVenues,
+  getPumpSwapCanonicalFeeProfile,
+  estimateRunout,
+} from '@trenchsniper/core';
 import { stateManager } from '../state/index.js';
 
 function isValidSolanaMint(address: string): boolean {
   // Basic validation: Solana addresses are base58 encoded, 32-44 chars
   return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address);
+}
+
+const BOT_DEFAULT_MIN_SWAP_SOL = 0.1;
+const BOT_DEFAULT_MAX_SWAP_SOL = 0.6;
+const BOT_SOL_RESERVE_PER_WALLET = 0.005;
+const BOT_DEFAULT_TX_FEE_SOL = 0.00005;
+const DEFAULT_MAINNET_RPC = 'https://api.mainnet-beta.solana.com';
+
+function formatPctFromBps(bps: number): string {
+  return `${(bps / 100).toFixed(3)}%`;
+}
+
+async function buildPreflightSummary(tokenMint: string): Promise<string> {
+  const rpcUrl = process.env.SOLANA_RPC_URL || DEFAULT_MAINNET_RPC;
+  const txFeeSol = parseFloat(process.env.VOLUME_ESTIMATED_TX_FEE_SOL || `${BOT_DEFAULT_TX_FEE_SOL}`);
+  const wallets = stateManager.getWallets();
+  const totalSol = wallets.reduce((sum, wallet) => sum + wallet.balance, 0);
+  const usableSol = wallets.reduce((sum, wallet) => sum + Math.max(0, wallet.balance - BOT_SOL_RESERVE_PER_WALLET), 0);
+  const connection = new Connection(rpcUrl, 'confirmed');
+  const mint = new PublicKey(tokenMint);
+
+  const [venues, feeProfile] = await Promise.all([
+    detectTokenVenues(connection, mint),
+    getPumpSwapCanonicalFeeProfile(connection, mint),
+  ]);
+
+  const estimate = estimateRunout({
+    usableSol,
+    minSwapSol: BOT_DEFAULT_MIN_SWAP_SOL,
+    maxSwapSol: BOT_DEFAULT_MAX_SWAP_SOL,
+    txFeeSol,
+    creatorFeeBps: feeProfile.selectedFeesBps.creatorFeeBps,
+    protocolFeeBps: feeProfile.selectedFeesBps.protocolFeeBps,
+    lpFeeBps: feeProfile.selectedFeesBps.lpFeeBps,
+  });
+
+  const feeSource =
+    feeProfile.selectedFeeSource === 'canonical_tier'
+      ? 'canonical PumpSwap tier'
+      : feeProfile.selectedFeeSource === 'flat_fees'
+        ? 'flat PumpSwap fees'
+        : 'fallback flat fees';
+
+  const warningLine = feeProfile.isCanonicalPool
+    ? ''
+    : '\n⚠️ Not confirmed canonical PumpSwap pool. Estimate uses flat fee fallback.';
+
+  return (
+    `📐 *Preflight Estimate*\n` +
+    `• Venue: PumpFun ${venues.isOnPumpFunBondingCurve ? '✅' : '❌'} | PumpSwap canonical ${venues.hasPumpSwapCanonicalPool ? '✅' : '❌'} | Raydium ${venues.hasRaydiumPool ? '✅' : '❌'}\n` +
+    `• Fee source: ${feeSource}\n` +
+    `• Fees: creator ${formatPctFromBps(feeProfile.selectedFeesBps.creatorFeeBps)} / protocol ${formatPctFromBps(feeProfile.selectedFeesBps.protocolFeeBps)} / LP ${formatPctFromBps(feeProfile.selectedFeesBps.lpFeeBps)} (total ${formatPctFromBps(feeProfile.selectedFeesBps.totalFeeBps)})\n` +
+    `• Capital: total ${totalSol.toFixed(4)} SOL, usable ${estimate.usableSol.toFixed(4)} SOL\n` +
+    `• Projection: ${estimate.projectedVolumeSol.toFixed(2)} SOL over ~${estimate.maxSwaps.toLocaleString()} swaps (${estimate.volumeMultiplier.toFixed(2)}x)\n` +
+    `• Creator reinvest (until bust): +${estimate.creatorReinvestedVolumeSol.toFixed(2)} SOL over ~${estimate.creatorReinvestedSwaps.toLocaleString()} swaps (total ${estimate.totalProjectedVolumeWithCreatorReinvestSol.toFixed(2)} SOL, ${estimate.volumeMultiplierWithCreatorReinvest.toFixed(2)}x)\n` +
+    `• Losses: creator ${estimate.creatorLossSol.toFixed(4)}, protocol ${estimate.protocolLossSol.toFixed(4)}, LP ${estimate.lpLossSol.toFixed(4)}, network ${estimate.networkLossSol.toFixed(4)} SOL\n` +
+    `• Total loss: ${estimate.totalLossSol.toFixed(4)} SOL | Theoretical max (no tx): ${estimate.theoreticalMaxVolumeSol.toFixed(2)} SOL` +
+    warningLine
+  );
 }
 
 export async function startBoostCommand(ctx: Context): Promise<void> {
@@ -30,15 +95,23 @@ export async function startBoostCommand(ctx: Context): Promise<void> {
     return;
   }
 
+  let preflightSummary = '';
+  try {
+    preflightSummary = await buildPreflightSummary(tokenMint);
+  } catch (error) {
+    preflightSummary = `⚠️ Preflight estimate unavailable: ${(error as Error).message}`;
+  }
+
   const result = stateManager.startBoost(tokenMint);
 
   if (result.success) {
     await ctx.reply(
-      `🚀 *Boost Started\\!*\n\n` +
+      `🚀 *Boost Started!*\n\n` +
       `*Token:* \`${tokenMint}\`\n\n` +
-      `Volume boosting is now active\\. Use /status to monitor progress\\.\n\n` +
-      `💡 Tip: Enable /alerts on to receive trade notifications\\.`,
-      { parse_mode: 'MarkdownV2' }
+      `${preflightSummary}\n\n` +
+      `Volume boosting is now active. Use /status to monitor progress.\n\n` +
+      `💡 Tip: Enable /alerts on to receive trade notifications.`,
+      { parse_mode: 'Markdown' }
     );
   } else {
     await ctx.reply(

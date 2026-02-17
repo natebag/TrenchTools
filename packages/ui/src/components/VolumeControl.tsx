@@ -30,6 +30,14 @@ import {
   type DexConfig 
 } from '@/lib/dex'
 import { Connection, PublicKey } from '@solana/web3.js'
+import {
+  detectTokenVenues,
+  getPumpSwapCanonicalFeeProfile,
+  estimateRunout,
+  type PoolVenueDetection,
+  type PumpSwapFeeProfile,
+  type RunoutEstimateOutput,
+} from '@trenchsniper/core'
 
 // Types for Volume Boosting configuration
 interface VolumeConfig {
@@ -44,6 +52,7 @@ interface VolumeConfig {
   maxSwapSol: number
   minIntervalMs: number
   maxIntervalMs: number
+  estimatedTxFeeSol: number
 }
 
 interface VolumeStats {
@@ -69,6 +78,7 @@ const defaultConfig: VolumeConfig = {
   maxSwapSol: 0.1,
   minIntervalMs: 30000,
   maxIntervalMs: 120000,
+  estimatedTxFeeSol: 0.00005,
 }
 
 // Load config from localStorage
@@ -115,6 +125,10 @@ const patternDescriptions = {
   steady: 'Consistent volume throughout the day',
   burst: 'Concentrated bursts of activity with quiet periods',
   wave: 'Gradual increases and decreases in activity',
+}
+
+function formatPctFromBps(bps: number): string {
+  return `${(bps / 100).toFixed(3)}%`;
 }
 
 function IntensitySelector({ value, onChange }: { 
@@ -246,10 +260,25 @@ export function VolumeControl() {
   const [useRealTrades, setUseRealTrades] = useState(false)
   const [selectedWalletIds, setSelectedWalletIds] = useState<string[]>([])
   const [resumeTick, setResumeTick] = useState(0)
+  const [venueDetection, setVenueDetection] = useState<PoolVenueDetection | null>(null)
+  const [feeProfile, setFeeProfile] = useState<PumpSwapFeeProfile | null>(null)
+  const [runoutEstimate, setRunoutEstimate] = useState<RunoutEstimateOutput | null>(null)
+  const [isEstimateLoading, setIsEstimateLoading] = useState(false)
+  const [estimateError, setEstimateError] = useState<string | null>(null)
   const intervalRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isExecutingTradeRef = useRef(false)
   const lastTradeAttemptAtRef = useRef<number | null>(null)
   const requireBuyBeforeSellRef = useRef(true)
+
+  const selectedWallets = selectedWalletIds.length > 0
+    ? wallets.filter(wallet => selectedWalletIds.includes(wallet.id))
+    : wallets
+  const totalSelectedBalanceSol = selectedWallets.reduce((sum, wallet) => sum + (wallet.balance || 0), 0)
+  const usableSelectedBalanceSol = selectedWallets.reduce((sum, wallet) => {
+    const balance = wallet.balance || 0
+    const spendable = Math.max(0, balance - (SOL_RESERVE_LAMPORTS / LAMPORTS_PER_SOL))
+    return sum + spendable
+  }, 0)
   
   const updateConfig = (updates: Partial<VolumeConfig>) => {
     setConfig(prev => {
@@ -276,6 +305,82 @@ export function VolumeControl() {
       localStorage.setItem('jupiter_api_key', jupiterApiKey);
     }
   }, [jupiterApiKey]);
+
+  useEffect(() => {
+    const targetToken = config.targetToken.trim();
+    if (!targetToken) {
+      setVenueDetection(null);
+      setFeeProfile(null);
+      setRunoutEstimate(null);
+      setEstimateError(null);
+      return;
+    }
+
+    let targetMint: PublicKey;
+    try {
+      targetMint = new PublicKey(targetToken);
+    } catch {
+      setVenueDetection(null);
+      setFeeProfile(null);
+      setRunoutEstimate(null);
+      setEstimateError('Enter a valid token mint to run PumpSwap fee estimation.');
+      return;
+    }
+
+    let cancelled = false;
+    setIsEstimateLoading(true);
+    setEstimateError(null);
+
+    const connection = new Connection(rpcUrl, 'confirmed');
+
+    const runEstimate = async () => {
+      try {
+        const [venues, profile] = await Promise.all([
+          detectTokenVenues(connection, targetMint),
+          getPumpSwapCanonicalFeeProfile(connection, targetMint),
+        ]);
+
+        if (cancelled) return;
+
+        setVenueDetection(venues);
+        setFeeProfile(profile);
+        setRunoutEstimate(
+          estimateRunout({
+            usableSol: usableSelectedBalanceSol,
+            minSwapSol: config.minSwapSol,
+            maxSwapSol: config.maxSwapSol,
+            txFeeSol: config.estimatedTxFeeSol,
+            creatorFeeBps: profile.selectedFeesBps.creatorFeeBps,
+            protocolFeeBps: profile.selectedFeesBps.protocolFeeBps,
+            lpFeeBps: profile.selectedFeesBps.lpFeeBps,
+          })
+        );
+      } catch (error) {
+        if (cancelled) return;
+        setVenueDetection(null);
+        setFeeProfile(null);
+        setRunoutEstimate(null);
+        setEstimateError((error as Error).message || 'Failed to compute PumpSwap estimate');
+      } finally {
+        if (!cancelled) {
+          setIsEstimateLoading(false);
+        }
+      }
+    };
+
+    void runEstimate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    config.targetToken,
+    config.minSwapSol,
+    config.maxSwapSol,
+    config.estimatedTxFeeSol,
+    rpcUrl,
+    usableSelectedBalanceSol,
+  ]);
 
   // Execute real swap via selected DEX
   const executeRealSwap = useCallback(async (preferredBuy: boolean, targetAmountSol: number) => {
@@ -712,6 +817,17 @@ export function VolumeControl() {
       window.removeEventListener('focus', handleResume);
     };
   }, [isRunning, config.maxIntervalMs]);
+
+  const estimateWarnings = [
+    ...(venueDetection?.warnings ?? []),
+    ...(feeProfile?.warnings ?? []),
+  ];
+  const feeSourceText =
+    feeProfile?.selectedFeeSource === 'canonical_tier'
+      ? 'Canonical PumpSwap tier'
+      : feeProfile?.selectedFeeSource === 'flat_fees'
+        ? 'PumpSwap flat fees'
+        : 'Fallback flat fees';
   
   return (
     <div className="space-y-6">
@@ -907,10 +1023,7 @@ export function VolumeControl() {
                   <div className="flex justify-between items-center mb-3">
                     <span className="text-sm text-slate-400">Available Balance:</span>
                     <span className="text-lg font-bold text-white">
-                      {(selectedWalletIds.length > 0 
-                        ? wallets.filter(w => selectedWalletIds.includes(w.id)).reduce((sum, w) => sum + (w.balance || 0), 0)
-                        : wallets.reduce((sum, w) => sum + (w.balance || 0), 0)
-                      ).toFixed(4)} SOL
+                      {totalSelectedBalanceSol.toFixed(4)} SOL
                     </span>
                   </div>
                   
@@ -1051,6 +1164,17 @@ export function VolumeControl() {
                   className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-500"
                 />
               </div>
+              <div className="space-y-2">
+                <label className="text-xs text-slate-500">Est. TX Fee (SOL)</label>
+                <input
+                  type="number"
+                  value={config.estimatedTxFeeSol}
+                  onChange={(e) => updateConfig({ estimatedTxFeeSol: parseFloat(e.target.value) || 0 })}
+                  step={0.00001}
+                  min={0}
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-500"
+                />
+              </div>
             </div>
           </div>
           
@@ -1068,6 +1192,164 @@ export function VolumeControl() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* PumpSwap Runout Estimator */}
+      <div className="card space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-cyan-400" />
+            PumpSwap Runout Estimator
+          </h3>
+          <span className="text-xs text-slate-500">
+            Uses on-chain PumpSwap fee config + pool checks
+          </span>
+        </div>
+
+        {isEstimateLoading && (
+          <p className="text-sm text-slate-400">Loading venue + fee profile...</p>
+        )}
+
+        {estimateError && (
+          <div className="p-3 rounded-lg border border-red-500/40 bg-red-500/10">
+            <p className="text-sm text-red-300">{estimateError}</p>
+          </div>
+        )}
+
+        {!isEstimateLoading && !estimateError && runoutEstimate && feeProfile && venueDetection && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="p-3 bg-slate-800 rounded-lg border border-slate-700">
+                <p className="text-xs text-slate-400">PumpFun Bonding Curve</p>
+                <p className={`text-sm font-medium ${venueDetection.isOnPumpFunBondingCurve ? 'text-emerald-400' : 'text-slate-300'}`}>
+                  {venueDetection.isOnPumpFunBondingCurve ? 'Detected' : 'Not detected'}
+                </p>
+              </div>
+              <div className="p-3 bg-slate-800 rounded-lg border border-slate-700">
+                <p className="text-xs text-slate-400">PumpSwap Canonical Pool</p>
+                <p className={`text-sm font-medium ${venueDetection.hasPumpSwapCanonicalPool ? 'text-emerald-400' : 'text-yellow-300'}`}>
+                  {venueDetection.hasPumpSwapCanonicalPool ? 'Detected' : 'Not detected'}
+                </p>
+              </div>
+              <div className="p-3 bg-slate-800 rounded-lg border border-slate-700">
+                <p className="text-xs text-slate-400">Raydium Pool</p>
+                <p className={`text-sm font-medium ${venueDetection.hasRaydiumPool ? 'text-yellow-300' : 'text-slate-300'}`}>
+                  {venueDetection.hasRaydiumPool ? 'Detected' : 'Not detected'}
+                </p>
+              </div>
+            </div>
+
+            {!feeProfile.isCanonicalPool && (
+              <div className="p-3 rounded-lg border border-yellow-500/40 bg-yellow-500/10">
+                <p className="text-sm text-yellow-200">
+                  Warning: token is not confirmed as canonical PumpSwap pool. Estimate uses flat PumpSwap fees and is still non-blocking.
+                </p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="p-3 bg-slate-800 rounded-lg border border-slate-700">
+                <p className="text-xs text-slate-400">Usable SOL</p>
+                <p className="text-sm font-semibold text-white">{runoutEstimate.usableSol.toFixed(4)}</p>
+              </div>
+              <div className="p-3 bg-slate-800 rounded-lg border border-slate-700">
+                <p className="text-xs text-slate-400">Avg Swap</p>
+                <p className="text-sm font-semibold text-white">{runoutEstimate.avgSwapSol.toFixed(4)} SOL</p>
+              </div>
+              <div className="p-3 bg-slate-800 rounded-lg border border-slate-700">
+                <p className="text-xs text-slate-400">Projected Swaps</p>
+                <p className="text-sm font-semibold text-white">{runoutEstimate.maxSwaps.toLocaleString()}</p>
+              </div>
+              <div className="p-3 bg-slate-800 rounded-lg border border-slate-700">
+                <p className="text-xs text-slate-400">Projected Volume</p>
+                <p className="text-sm font-semibold text-emerald-400">{runoutEstimate.projectedVolumeSol.toFixed(2)} SOL</p>
+              </div>
+              <div className="p-3 bg-slate-800 rounded-lg border border-slate-700">
+                <p className="text-xs text-slate-400">Creator Reinvested Volume</p>
+                <p className="text-sm font-semibold text-cyan-300">
+                  +{runoutEstimate.creatorReinvestedVolumeSol.toFixed(2)} SOL
+                </p>
+              </div>
+              <div className="p-3 bg-slate-800 rounded-lg border border-slate-700">
+                <p className="text-xs text-slate-400">Total Volume w/ Reinvest</p>
+                <p className="text-sm font-semibold text-emerald-300">
+                  {runoutEstimate.totalProjectedVolumeWithCreatorReinvestSol.toFixed(2)} SOL
+                </p>
+              </div>
+              <div className="p-3 bg-slate-800 rounded-lg border border-slate-700">
+                <p className="text-xs text-slate-400">Creator Fee Loss</p>
+                <p className="text-sm font-semibold text-white">{runoutEstimate.creatorLossSol.toFixed(4)} SOL</p>
+              </div>
+              <div className="p-3 bg-slate-800 rounded-lg border border-slate-700">
+                <p className="text-xs text-slate-400">Protocol Fee Loss</p>
+                <p className="text-sm font-semibold text-white">{runoutEstimate.protocolLossSol.toFixed(4)} SOL</p>
+              </div>
+              <div className="p-3 bg-slate-800 rounded-lg border border-slate-700">
+                <p className="text-xs text-slate-400">LP Fee Loss</p>
+                <p className="text-sm font-semibold text-white">{runoutEstimate.lpLossSol.toFixed(4)} SOL</p>
+              </div>
+              <div className="p-3 bg-slate-800 rounded-lg border border-slate-700">
+                <p className="text-xs text-slate-400">Network Fee Loss</p>
+                <p className="text-sm font-semibold text-white">{runoutEstimate.networkLossSol.toFixed(4)} SOL</p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-900 rounded-lg border border-slate-700">
+              <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+                <span className="text-slate-300">
+                  Fee source: <span className="text-white">{feeSourceText}</span>
+                </span>
+                <span className="text-slate-300">
+                  Creator: <span className="text-white">{formatPctFromBps(feeProfile.selectedFeesBps.creatorFeeBps)}</span>
+                </span>
+                <span className="text-slate-300">
+                  Protocol: <span className="text-white">{formatPctFromBps(feeProfile.selectedFeesBps.protocolFeeBps)}</span>
+                </span>
+                <span className="text-slate-300">
+                  LP: <span className="text-white">{formatPctFromBps(feeProfile.selectedFeesBps.lpFeeBps)}</span>
+                </span>
+                <span className="text-slate-300">
+                  Total: <span className="text-emerald-300">{formatPctFromBps(feeProfile.selectedFeesBps.totalFeeBps)}</span>
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-2 mt-2 text-sm">
+                <span className="text-slate-300">
+                  Total loss: <span className="text-white">{runoutEstimate.totalLossSol.toFixed(4)} SOL</span>
+                </span>
+                <span className="text-slate-300">
+                  Theoretical max (no tx fee): <span className="text-white">{runoutEstimate.theoreticalMaxVolumeSol.toFixed(2)} SOL</span>
+                </span>
+                <span className="text-slate-300">
+                  Efficiency: <span className="text-emerald-300">{runoutEstimate.volumeMultiplier.toFixed(2)}x</span>
+                </span>
+                <span className="text-slate-300">
+                  With creator reinvest: <span className="text-cyan-300">{runoutEstimate.volumeMultiplierWithCreatorReinvest.toFixed(2)}x</span>
+                </span>
+                <span className="text-slate-300">
+                  Reinvest cycles: <span className="text-white">{runoutEstimate.creatorReinvestCycles}</span>
+                </span>
+              </div>
+              {feeProfile.selectedTier && (
+                <p className="text-xs text-slate-500 mt-2">
+                  Canonical tier threshold: {feeProfile.selectedTier.marketCapSolThreshold.toLocaleString()} SOL market cap
+                </p>
+              )}
+            </div>
+
+            {estimateWarnings.length > 0 && (
+              <div className="p-3 rounded-lg border border-slate-700 bg-slate-800/60">
+                <p className="text-xs uppercase tracking-wide text-slate-400 mb-1">Diagnostics</p>
+                <div className="space-y-1">
+                  {estimateWarnings.slice(0, 4).map((warning, idx) => (
+                    <p key={`${warning}-${idx}`} className="text-xs text-slate-300">
+                      • {warning}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Health Monitor */}

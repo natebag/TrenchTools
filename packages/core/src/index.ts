@@ -97,6 +97,9 @@ export * from './activity/index.js';
 // Liquidity - LP token locking
 export * from './liquidity/index.js';
 
+// Volume - PumpSwap venue detection and runout estimations
+export * from './volume/index.js';
+
 // Treasury - Main wallet funding
 export {
   getTreasuryStatus,
