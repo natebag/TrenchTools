@@ -49,6 +49,7 @@ export interface UseSecureWalletReturn {
   deleteVault: () => void;
   clearError: () => void;
   getKeypairs: () => import('@solana/web3.js').Keypair[];
+  getPassword: () => string | null;
 }
 
 // ============ Hook ============
@@ -421,6 +422,11 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
     return manager.getAllKeypairs();
   }, [manager]);
 
+  // Get vault password (available after unlock, null when locked)
+  const getPassword = useCallback(() => {
+    return manager.getPassword();
+  }, [manager]);
+
   return {
     wallets,
     isLocked,
@@ -442,6 +448,7 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
     deleteVault,
     clearError,
     getKeypairs,
+    getPassword,
   };
 }
 

@@ -8,7 +8,6 @@ import {
   Menu,
   Activity,
   Zap,
-  Bot,
   Eye,
   Volume2,
   RefreshCw,
@@ -35,9 +34,8 @@ import { ShieldScanner } from './ShieldScanner'
 import { PnLCharts } from './PnLCharts'
 import { ActivityGenerator } from './ActivityGenerator'
 import { SettingsPanel } from './SettingsPanel'
-import { BotManager } from './BotManager'
 import { DetectionDashboard } from './DetectionDashboard'
-import { VolumeControl } from './VolumeControl'
+import { MarketMaking } from './MarketMaking'
 import { TokenChart } from './TokenChart'
 import { WhaleAlerts } from './WhaleAlerts'
 
@@ -49,9 +47,8 @@ const navItems = [
   { path: '/whales', label: 'Whales', icon: Fish, description: 'Whale alerts' },
   { path: '/pnl', label: 'P&L', icon: LineChart, description: 'Portfolio analytics' },
   { path: '/activity', label: 'Activity', icon: Activity, description: 'Generate fake tx history' },
-  { path: '/bots', label: 'Bots', icon: Bot, description: 'Market maker bots' },
+  { path: '/market-making', label: 'Market Making', icon: Volume2, description: 'Volume & automated bots' },
   { path: '/detection', label: 'Detection', icon: Eye, description: 'Manipulation analysis' },
-  { path: '/volume', label: 'Volume', icon: Volume2, description: 'Volume boosting' },
   { path: '/charts', label: 'Charts', icon: LineChart, description: 'Token price charts' },
   { path: '/settings', label: 'Settings', icon: Settings, description: 'Configuration' },
 ]
@@ -415,14 +412,14 @@ function Header({ onMenuClick }: { onMenuClick: () => void }) {
 function AppContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [currentPath, setCurrentPath] = useState(window.location.pathname)
-  const [hasMountedVolume, setHasMountedVolume] = useState(window.location.pathname === '/volume')
+  const [hasMountedMarketMaking, setHasMountedMarketMaking] = useState(window.location.pathname === '/market-making')
 
   useEffect(() => {
     const handlePopState = () => {
       const nextPath = window.location.pathname
       setCurrentPath(nextPath)
-      if (nextPath === '/volume') {
-        setHasMountedVolume(true)
+      if (nextPath === '/market-making') {
+        setHasMountedMarketMaking(true)
       }
     }
 
@@ -440,7 +437,6 @@ function AppContent() {
       case '/whales': return <WhaleAlerts />
       case '/pnl': return <PnLCharts />
       case '/activity': return <ActivityGenerator />
-      case '/bots': return <BotManager />
       case '/detection': return <DetectionDashboard />
       case '/charts': return <TokenChart />
       case '/settings': return <SettingsPanel />
@@ -457,12 +453,12 @@ function AppContent() {
         
         <main className="flex-1 p-6 overflow-auto">
           <div className="max-w-7xl mx-auto">
-            {hasMountedVolume && (
-              <div className={currentPath === '/volume' ? '' : 'hidden'}>
-                <VolumeControl />
+            {hasMountedMarketMaking && (
+              <div className={currentPath === '/market-making' ? '' : 'hidden'}>
+                <MarketMaking />
               </div>
             )}
-            {currentPath !== '/volume' && <RouteContent path={currentPath} />}
+            {currentPath !== '/market-making' && <RouteContent path={currentPath} />}
           </div>
         </main>
       </div>

@@ -8,6 +8,7 @@ import {
   ArrowRight,
   Check,
   ExternalLink,
+  BookOpen,
   Wrench,
   TrendingUp,
   Crosshair,
@@ -29,6 +30,15 @@ function App() {
               <a href="#features" className="text-slate-400 hover:text-white transition-colors">Features</a>
               <a href="#how-it-works" className="text-slate-400 hover:text-white transition-colors">How it Works</a>
               <a href="#dashboard" className="text-slate-400 hover:text-white transition-colors">Dashboard</a>
+              <a
+                href="https://docs.trenchtools.io"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-slate-400 hover:text-emerald-400 transition-colors"
+              >
+                <BookOpen className="w-4 h-4" />
+                Docs
+              </a>
               <a
                 href="https://github.com/natebag/Trenchtools"
                 target="_blank"
@@ -382,7 +392,7 @@ function App() {
                   </a>
                 </li>
                 <li>
-                  <a href="https://github.com/natebag/Trenchtools#readme" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                  <a href="https://docs.trenchtools.io" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
                     Documentation
                   </a>
                 </li>

@@ -36,6 +36,7 @@ export interface WalletManagerState {
 export class BrowserWalletManager {
   private vault: BrowserWalletVault;
   private keypairs: Map<string, Keypair> = new Map();
+  private _password: string | null = null;
 
   constructor(storageKey = 'trenchsniper_secure_wallets') {
     if (!isBrowserCryptoAvailable()) {
@@ -94,6 +95,7 @@ export class BrowserWalletManager {
 
       // Reconstruct keypairs and wallet objects
       this.keypairs.clear();
+      this._password = password;
       return walletData.map(w => this.dataToWallet(w));
     } catch (error) {
       if (error instanceof BrowserDecryptionError) {
@@ -109,6 +111,14 @@ export class BrowserWalletManager {
   lock(): void {
     this.vault.lock();
     this.keypairs.clear();
+    this._password = null;
+  }
+
+  /**
+   * Get the vault password (available after unlock, cleared on lock)
+   */
+  getPassword(): string | null {
+    return this._password;
   }
 
   /**

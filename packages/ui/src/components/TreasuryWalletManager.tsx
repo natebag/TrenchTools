@@ -28,6 +28,7 @@ import {
   Eye,
   EyeOff,
   Pencil,
+  Bot,
 } from 'lucide-react';
 import { useSecureWallet } from '@/hooks/useSecureWallet';
 import { useNetwork } from '@/context/NetworkContext';
@@ -156,12 +157,16 @@ export function TreasuryWalletManager() {
   const [selectedWalletIds, setSelectedWalletIds] = useState<string[]>([]);
   const [isSellingAll, setIsSellingAll] = useState(false);
   const [sellAllProgress, setSellAllProgress] = useState('');
+  const [botWalletsExpanded, setBotWalletsExpanded] = useState(false);
+  const [botWalletBusy, setBotWalletBusy] = useState<Record<string, string>>({});  // walletId → 'sell'|'sweep'
+  const [expandedBotWallet, setExpandedBotWallet] = useState<string | null>(null);
 
   const walletAddressKey = wallets.map(w => w.address).join('|');
 
   // Main wallet is always the first one
   const treasuryWallet = wallets[0];
-  const subWallets = wallets.filter(w => w.id !== treasuryWallet?.id);
+  const subWallets = wallets.filter(w => w.id !== treasuryWallet?.id && w.type !== 'burner');
+  const botWallets = wallets.filter(w => w.type === 'burner');
 
   const showSuccess = useCallback((message: string, txHash?: string) => {
     setSuccess(message);
@@ -173,6 +178,180 @@ export function TreasuryWalletManager() {
     setSuccess(null);
     setSellTxHash(null);
   }, []);
+
+  // ── Bot Wallet: Sell all tokens ──────────────────────────────
+  const handleBotWalletSell = useCallback(async (wallet: (typeof wallets)[number]) => {
+    const keypairs = getKeypairs();
+    const signer = keypairs.find(kp => kp.publicKey.toBase58() === wallet.address);
+    if (!signer) {
+      setError('Signer not found — vault may be locked');
+      return;
+    }
+
+    setBotWalletBusy(prev => ({ ...prev, [wallet.id]: 'sell' }));
+    clearFeedback();
+
+    try {
+      const connection = new Connection(rpcUrl, 'confirmed');
+      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+        new PublicKey(wallet.address),
+        { programId: SPL_TOKEN_PROGRAM_ID }
+      );
+      const holdings = tokenAccounts.value
+        .map((account) => {
+          const info = account.account.data.parsed.info;
+          const tokenAmount = info.tokenAmount;
+          return {
+            mint: info.mint as string,
+            amountRaw: tokenAmount.amount as string,
+            amountUi: tokenAmount.uiAmount ?? parseFloat(tokenAmount.uiAmountString || '0'),
+            decimals: tokenAmount.decimals as number,
+          };
+        })
+        .filter(h => BigInt(h.amountRaw) > 0n && h.mint !== WSOL_MINT);
+
+      if (holdings.length === 0) {
+        showSuccess(`${wallet.name}: No tokens to sell`);
+        return;
+      }
+
+      let sold = 0;
+      let errors = 0;
+      for (const token of holdings) {
+        try {
+          // Try Jupiter first
+          const jupiterApiKey = localStorage.getItem('jupiter_api_key') || '';
+          const quoteUrl = `${JUPITER_API_URL}/quote?` + new URLSearchParams({
+            inputMint: token.mint,
+            outputMint: WSOL_MINT,
+            amount: token.amountRaw,
+            slippageBps: '200',
+          });
+          const quoteResponse = await fetch(quoteUrl, {
+            headers: jupiterApiKey ? { 'x-api-key': jupiterApiKey } : {},
+          });
+          if (!quoteResponse.ok) throw new Error('Jupiter quote failed');
+
+          const quote = await quoteResponse.json();
+          const swapResponse = await fetch(`${JUPITER_API_URL}/swap`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(jupiterApiKey ? { 'x-api-key': jupiterApiKey } : {}),
+            },
+            body: JSON.stringify({
+              quoteResponse: quote,
+              userPublicKey: signer.publicKey.toBase58(),
+              wrapAndUnwrapSol: true,
+              dynamicComputeUnitLimit: true,
+              prioritizationFeeLamports: 'auto',
+            }),
+          });
+          if (!swapResponse.ok) throw new Error('Jupiter swap failed');
+
+          const swapPayload = await swapResponse.json();
+          const transactionBuffer = Buffer.from(swapPayload.swapTransaction, 'base64');
+          const transaction = VersionedTransaction.deserialize(transactionBuffer);
+          transaction.sign([signer]);
+
+          const signature = await connection.sendTransaction(transaction, { skipPreflight: false, maxRetries: 3 });
+          const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+          await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
+          sold++;
+
+          addTrade({
+            timestamp: Date.now(),
+            type: 'sell',
+            tokenMint: token.mint,
+            amount: token.amountUi,
+            wallet: wallet.address,
+            txHash: signature,
+            status: 'success',
+            source: 'treasury',
+          });
+        } catch {
+          // Fallback: PumpFun
+          try {
+            const pfConfig: DexConfig = { rpcUrl, slippageBps: 200 };
+            const pfQuote = await dexGetQuote('pumpfun', token.mint, WSOL_MINT, parseInt(token.amountRaw), pfConfig);
+            const pfResult = await dexExecuteSwap(pfQuote, signer, pfConfig);
+            if (pfResult.success) {
+              sold++;
+              addTrade({
+                timestamp: Date.now(),
+                type: 'sell',
+                tokenMint: token.mint,
+                amount: token.amountUi,
+                wallet: wallet.address,
+                txHash: pfResult.txHash,
+                status: 'success',
+                source: 'treasury',
+              });
+            } else {
+              errors++;
+            }
+          } catch {
+            errors++;
+          }
+        }
+      }
+
+      if (errors === 0) showSuccess(`${wallet.name}: Sold ${sold} token(s)`);
+      else setError(`${wallet.name}: ${sold} sold, ${errors} failed`);
+    } catch (err) {
+      setError(`${wallet.name} sell failed: ${(err as Error).message}`);
+    } finally {
+      setBotWalletBusy(prev => { const next = { ...prev }; delete next[wallet.id]; return next; });
+    }
+  }, [getKeypairs, rpcUrl, clearFeedback, showSuccess, addTrade]);
+
+  // ── Bot Wallet: Sweep SOL to treasury ────────────────────────
+  const handleBotWalletSweep = useCallback(async (wallet: (typeof wallets)[number]) => {
+    const treasuryAddr = wallets[0]?.address;
+    if (!treasuryAddr) {
+      setError('No treasury wallet');
+      return;
+    }
+    const keypairs = getKeypairs();
+    const signer = keypairs.find(kp => kp.publicKey.toBase58() === wallet.address);
+    if (!signer) {
+      setError('Signer not found — vault may be locked');
+      return;
+    }
+
+    setBotWalletBusy(prev => ({ ...prev, [wallet.id]: 'sweep' }));
+    clearFeedback();
+
+    try {
+      const connection = new Connection(rpcUrl, 'confirmed');
+      const lamports = await connection.getBalance(signer.publicKey);
+      const sweepLamports = lamports - 5000;
+
+      if (sweepLamports <= 0) {
+        showSuccess(`${wallet.name}: No SOL to sweep`);
+        return;
+      }
+
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+      const tx = new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey: signer.publicKey,
+          toPubkey: new PublicKey(treasuryAddr),
+          lamports: sweepLamports,
+        })
+      );
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = signer.publicKey;
+      tx.sign(signer);
+      const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false, maxRetries: 3 });
+      await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
+      showSuccess(`${wallet.name}: Swept ${(sweepLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL to treasury`, sig);
+    } catch (err) {
+      setError(`${wallet.name} sweep failed: ${(err as Error).message}`);
+    } finally {
+      setBotWalletBusy(prev => { const next = { ...prev }; delete next[wallet.id]; return next; });
+    }
+  }, [wallets, getKeypairs, rpcUrl, clearFeedback, showSuccess]);
 
   const getWalletSigner = useCallback((walletAddress: string) => {
     const keypairs = getKeypairs();
@@ -300,17 +479,13 @@ export function TreasuryWalletManager() {
     }
 
     const jupiterApiKey = localStorage.getItem('jupiter_api_key') || '';
-    if (!jupiterApiKey) {
-      setError('Jupiter API key missing. Set it in Settings to enable token sells.');
-      setPendingSell(null);
-      return;
-    }
 
     setIsSelling(true);
     setSellLoadingByRow(prev => ({ ...prev, [rowKey]: true }));
     clearFeedback();
 
     try {
+      // Try Jupiter first (works for graduated tokens)
       const quoteUrl = `${JUPITER_API_URL}/quote?` + new URLSearchParams({
         inputMint: pendingSell.mint,
         outputMint: WSOL_MINT,
@@ -319,13 +494,10 @@ export function TreasuryWalletManager() {
       });
 
       const quoteResponse = await fetch(quoteUrl, {
-        headers: { 'x-api-key': jupiterApiKey },
+        headers: jupiterApiKey ? { 'x-api-key': jupiterApiKey } : {},
       });
 
-      if (!quoteResponse.ok) {
-        const errorText = await quoteResponse.text();
-        throw new Error(`Jupiter quote failed (${quoteResponse.status}): ${errorText}`);
-      }
+      if (!quoteResponse.ok) throw new Error('Jupiter quote failed');
 
       const quote = await quoteResponse.json();
 
@@ -333,7 +505,7 @@ export function TreasuryWalletManager() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': jupiterApiKey,
+          ...(jupiterApiKey ? { 'x-api-key': jupiterApiKey } : {}),
         },
         body: JSON.stringify({
           quoteResponse: quote,
@@ -343,11 +515,7 @@ export function TreasuryWalletManager() {
           prioritizationFeeLamports: 'auto',
         }),
       });
-
-      if (!swapResponse.ok) {
-        const errorText = await swapResponse.text();
-        throw new Error(`Jupiter swap failed (${swapResponse.status}): ${errorText}`);
-      }
+      if (!swapResponse.ok) throw new Error('Jupiter swap failed');
 
       const swapPayload = await swapResponse.json();
       const transactionBuffer = Buffer.from(swapPayload.swapTransaction, 'base64');
@@ -361,14 +529,52 @@ export function TreasuryWalletManager() {
       });
       await connection.confirmTransaction(signature, 'confirmed');
 
+      addTrade({
+        timestamp: Date.now(),
+        type: 'sell',
+        tokenMint: pendingSell.mint,
+        amount: pendingSell.amountUi,
+        wallet: pendingSell.walletAddress,
+        txHash: signature,
+        status: 'success',
+        source: 'treasury',
+      });
+
       showSuccess(`Sell Max successful for ${pendingSell.walletName}`, signature);
       setPendingSell(null);
 
       await Promise.all([refreshAllWalletHoldings(), refreshBalances()]);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown sell error';
-      setError(`${message}. If balance changed, refresh and retry.`);
-      await refreshAllWalletHoldings();
+    } catch (jupiterErr) {
+      // Jupiter failed — try PumpFun for pre-graduation tokens
+      try {
+        const pfConfig: DexConfig = { rpcUrl, slippageBps: 200 };
+        const pfQuote = await dexGetQuote('pumpfun', pendingSell.mint, WSOL_MINT, parseInt(pendingSell.amountRaw), pfConfig);
+        const pfResult = await dexExecuteSwap(pfQuote, signer, pfConfig);
+        if (pfResult.success) {
+          addTrade({
+            timestamp: Date.now(),
+            type: 'sell',
+            tokenMint: pendingSell.mint,
+            amount: pendingSell.amountUi,
+            wallet: pendingSell.walletAddress,
+            txHash: pfResult.txHash,
+            status: 'success',
+            source: 'treasury',
+          });
+
+          showSuccess(`Sell Max successful via PumpFun for ${pendingSell.walletName}`, pfResult.txHash);
+          setPendingSell(null);
+
+          await Promise.all([refreshAllWalletHoldings(), refreshBalances()]);
+        } else {
+          throw new Error(pfResult.error || 'PumpFun sell failed');
+        }
+      } catch (pfErr) {
+        console.error('Sell failed (Jupiter + PumpFun):', jupiterErr, pfErr);
+        const message = pfErr instanceof Error ? pfErr.message : 'Unknown sell error';
+        setError(`Sell failed: ${message}. If balance changed, refresh and retry.`);
+        await refreshAllWalletHoldings();
+      }
     } finally {
       setIsSelling(false);
       setSellLoadingByRow(prev => ({ ...prev, [rowKey]: false }));
@@ -381,6 +587,7 @@ export function TreasuryWalletManager() {
     refreshAllWalletHoldings,
     refreshBalances,
     showSuccess,
+    addTrade,
   ]);
 
   // Sell all tokens from selected wallets back to SOL
@@ -784,7 +991,7 @@ export function TreasuryWalletManager() {
   const handleUnlock = useCallback(async () => {
     try {
       await unlock(password);
-      setPassword('');
+      // Keep password in state — needed for vault mutations (add, delete, edit wallets)
     } catch (err) {
       setError((err as Error).message);
     }
@@ -1197,6 +1404,7 @@ export function TreasuryWalletManager() {
 
   useEffect(() => {
     if (isLocked) {
+      setPassword('');
       setWalletHoldings({});
       setWalletHoldingsLoading({});
       setExpandedWallets({});
@@ -1673,6 +1881,96 @@ export function TreasuryWalletManager() {
           </div>
         )}
       </div>
+
+      {/* Bot Wallets Section (collapsible) */}
+      {botWallets.length > 0 && (
+        <div className="space-y-3">
+          <button
+            onClick={() => setBotWalletsExpanded(!botWalletsExpanded)}
+            className="flex items-center gap-2 text-lg font-medium text-white hover:text-purple-300 transition-colors"
+          >
+            <Bot className="w-5 h-5 text-purple-400" />
+            Bot Wallets ({botWallets.length})
+            {botWalletsExpanded
+              ? <ChevronUp className="w-4 h-4 text-slate-400" />
+              : <ChevronDown className="w-4 h-4 text-slate-400" />
+            }
+          </button>
+
+          {botWalletsExpanded && (
+            <div className="space-y-3">
+              {Object.entries(
+                botWallets.reduce<Record<string, typeof botWallets>>((groups, w) => {
+                  const match = w.name.match(/^(.+-W)\d+$/);
+                  const prefix = match ? match[1] : 'Other';
+                  if (!groups[prefix]) groups[prefix] = [];
+                  groups[prefix].push(w);
+                  return groups;
+                }, {})
+              ).map(([prefix, groupWallets]) => (
+                <div key={prefix} className="bg-slate-900/50 rounded-xl p-4 border border-purple-500/20">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-medium text-purple-300">{prefix}</span>
+                    <span className="text-sm text-slate-400">{groupWallets.length} wallets</span>
+                  </div>
+                  <div className="space-y-1">
+                    {groupWallets.map(w => {
+                      const isExpanded = expandedBotWallet === w.id;
+                      const busy = botWalletBusy[w.id];
+                      return (
+                        <div key={w.id}>
+                          <button
+                            onClick={() => setExpandedBotWallet(isExpanded ? null : w.id)}
+                            className="w-full flex items-center justify-between py-1.5 px-3 bg-slate-800/50 hover:bg-slate-800 rounded-lg text-xs transition-colors"
+                          >
+                            <span className="text-slate-300 font-medium">{w.name}</span>
+                            <div className="flex items-center gap-3">
+                              <span className="text-slate-500 font-mono">{w.address.slice(0, 6)}...{w.address.slice(-4)}</span>
+                              <span className="text-emerald-400 font-medium">{(w.balance || 0).toFixed(4)} SOL</span>
+                              {isExpanded
+                                ? <ChevronUp className="w-3 h-3 text-slate-400" />
+                                : <ChevronDown className="w-3 h-3 text-slate-400" />}
+                            </div>
+                          </button>
+                          {isExpanded && (
+                            <div className="flex gap-2 px-3 py-2 bg-slate-900/50 rounded-b-lg border-t border-slate-700/50">
+                              <button
+                                onClick={() => handleBotWalletSell(w)}
+                                disabled={!!busy}
+                                className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 disabled:opacity-50 rounded text-xs font-medium transition-colors"
+                              >
+                                {busy === 'sell' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Coins className="w-3 h-3" />}
+                                Sell Tokens
+                              </button>
+                              <button
+                                onClick={() => handleBotWalletSweep(w)}
+                                disabled={!!busy}
+                                className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 disabled:opacity-50 rounded text-xs font-medium transition-colors"
+                              >
+                                {busy === 'sweep' ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowUp className="w-3 h-3" />}
+                                Sweep SOL
+                              </button>
+                              <button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(w.address);
+                                  showSuccess(`Copied ${w.name} address`);
+                                }}
+                                className="flex items-center justify-center gap-1 px-2 py-1.5 bg-slate-700/50 hover:bg-slate-700 text-slate-300 rounded text-xs font-medium transition-colors"
+                              >
+                                <Copy className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Add Wallet Modal */}
       {showAddWalletModal && (
