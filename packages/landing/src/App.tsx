@@ -66,7 +66,7 @@ function App() {
             </h1>
             
             <p className="text-xl text-slate-400 max-w-3xl mx-auto mb-10">
-              The complete Solana trading toolkit. Token sniping, volume boosting, 
+              The complete Solana trading toolkit. Token sniping, market making, 
               wallet management, and real-time analytics — open source or hosted with just 0.05% fees.
             </p>
             
@@ -128,8 +128,8 @@ function App() {
             />
             <FeatureCard
               icon={<Zap className="w-8 h-8" />}
-              title="Volume Boosting"
-              description="Automated volume generation with smart patterns that avoid detection."
+              title="market making"
+              description="Automated liquidity provision with smart patterns that natural flow."
             />
             <FeatureCard
               icon={<Wallet className="w-8 h-8" />}
@@ -251,7 +251,7 @@ function App() {
                     {/* Chart mockup */}
                     <div className="bg-slate-800/50 rounded-lg p-4 h-64">
                       <div className="flex items-center justify-between mb-4">
-                        <span className="font-semibold">Volume Over Time</span>
+                        <span className="font-semibold">Activity Over Time</span>
                         <div className="flex gap-2 text-sm">
                           <span className="px-2 py-1 bg-emerald-500/20 text-emerald-400 rounded">24H</span>
                           <span className="px-2 py-1 text-slate-500">7D</span>
@@ -274,7 +274,7 @@ function App() {
                       <div className="font-semibold mb-4">Recent Activity</div>
                       <div className="space-y-2">
                         {[
-                          { action: 'Volume boost completed', time: '2 min ago', status: 'success' },
+                          { action: 'Market making completed', time: '2 min ago', status: 'success' },
                           { action: 'Wallet rebalanced', time: '5 min ago', status: 'success' },
                           { action: 'Sniper detected', time: '12 min ago', status: 'warning' },
                         ].map((activity, i) => (
