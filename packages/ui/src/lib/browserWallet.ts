@@ -183,6 +183,7 @@ export class BrowserWalletManager {
         secretKey: Array.from(keypair.secretKey),
         createdAt: Date.now(),
         name: `${namePrefix} ${i + 1}`,
+        type,
       });
     }
     
@@ -318,8 +319,6 @@ export class BrowserWalletManager {
   ): Wallet {
     // Use type from stored data, fallback for backward compatibility
     const type = data.type || fallbackType;
-    // Use stored type if available, otherwise use provided/default
-    const walletType = data.type || type;
     // Reconstruct keypair and store
     const keypair = Keypair.fromSecretKey(new Uint8Array(data.secretKey));
     const id = `wallet_${data.publicKey.slice(0, 8)}`;
