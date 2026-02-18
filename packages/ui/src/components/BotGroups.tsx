@@ -37,6 +37,7 @@ import { Connection, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL, Ve
 // ── Constants ──────────────────────────────────────────────────
 
 const BOT_CONFIGS_STORAGE_KEY = 'trench_bot_configs'
+const BOT_RUNTIMES_STORAGE_KEY = 'trench_bot_runtimes'
 const MAX_BOT_GROUPS = 6
 const WSOL = KNOWN_MINTS.WSOL
 const SOL_RESERVE_LAMPORTS = 5_000_000 // 0.005 SOL for fees/rent
@@ -190,6 +191,27 @@ export function BotGroups() {
     }
     runtimesRef.current.set(botId, { ...current, ...updates })
     setRuntimeVersion(v => v + 1)
+
+    // Sync lightweight summary to localStorage for Dashboard card
+    try {
+      const summary: Record<string, { status: string; name: string; walletCount: number; swaps: number; volume: number }> = {}
+      for (const [id, rt] of runtimesRef.current.entries()) {
+        if (rt.status === 'idle') continue
+        const cfg = configsRef.current.find(c => c.id === id)
+        summary[id] = {
+          status: rt.status,
+          name: cfg?.name || id.slice(0, 8),
+          walletCount: rt.walletIds.length,
+          swaps: rt.stats.swapsExecuted,
+          volume: rt.stats.totalVolumeSol,
+        }
+      }
+      if (Object.keys(summary).length > 0) {
+        localStorage.setItem(BOT_RUNTIMES_STORAGE_KEY, JSON.stringify(summary))
+      } else {
+        localStorage.removeItem(BOT_RUNTIMES_STORAGE_KEY)
+      }
+    } catch { /* ignore */ }
   }, [])
 
   // ── Orphan detection ───────────────────────────────────────

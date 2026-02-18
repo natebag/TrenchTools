@@ -110,14 +110,33 @@ function PortfolioCard() {
   )
 }
 
-// Active Bots Card - placeholder until bots have real state
+// Active Bots Card - reads live bot state from localStorage
 function ActiveBotsCard() {
+  const [bots, setBots] = useState<{ id: string; name: string; status: string; walletCount: number; swaps: number; volume: number }[]>([])
+
+  useEffect(() => {
+    const read = () => {
+      try {
+        const raw = localStorage.getItem('trench_bot_runtimes')
+        if (!raw) { setBots([]); return }
+        const summary = JSON.parse(raw) as Record<string, { status: string; name: string; walletCount: number; swaps: number; volume: number }>
+        setBots(Object.entries(summary).map(([id, s]) => ({ id, ...s })))
+      } catch { setBots([]) }
+    }
+    read()
+    const interval = setInterval(read, 2000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const runningCount = bots.filter(b => b.status === 'running').length
+  const totalCount = bots.length
+
   return (
     <div className="card hover:border-slate-700 transition-colors">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
-            <Bot className="w-5 h-5 text-purple-400" />
+          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${runningCount > 0 ? 'bg-purple-500/20' : 'bg-slate-800/50'}`}>
+            <Bot className={`w-5 h-5 ${runningCount > 0 ? 'text-purple-400' : 'text-slate-500'}`} />
           </div>
           <h3 className="font-semibold text-white">Active Bots</h3>
         </div>
@@ -129,10 +148,30 @@ function ActiveBotsCard() {
         </button>
       </div>
 
-      <div className="text-center py-4">
-        <p className="text-2xl font-bold text-slate-500">0</p>
-        <p className="text-xs text-slate-500 mt-1">No bots running</p>
-      </div>
+      {totalCount === 0 ? (
+        <div className="text-center py-4">
+          <p className="text-2xl font-bold text-slate-500">0</p>
+          <p className="text-xs text-slate-500 mt-1">No bots running</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <div className="text-center">
+            <p className={`text-2xl font-bold ${runningCount > 0 ? 'text-purple-400' : 'text-amber-400'}`}>{runningCount}</p>
+            <p className="text-xs text-slate-500">{runningCount === 1 ? '1 bot running' : `${runningCount} bots running`}</p>
+          </div>
+          <div className="space-y-1.5 max-h-28 overflow-y-auto">
+            {bots.map(b => (
+              <div key={b.id} className="flex items-center justify-between text-xs px-2 py-1.5 rounded bg-slate-800/50">
+                <div className="flex items-center gap-2">
+                  <div className={`w-1.5 h-1.5 rounded-full ${b.status === 'running' ? 'bg-emerald-400 animate-pulse' : b.status === 'starting' ? 'bg-amber-400 animate-pulse' : b.status === 'stopping' ? 'bg-orange-400' : 'bg-red-400'}`} />
+                  <span className="text-slate-300 truncate max-w-[100px]">{b.name}</span>
+                </div>
+                <span className="text-slate-500">{b.swaps} swaps</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <button
         onClick={() => navigateTo('/bots')}
