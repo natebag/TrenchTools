@@ -6,14 +6,14 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "start": "pnpm --filter @trenchsniper/landing start",
+    "start": "pnpm --filter @trenchtools/ui dev",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean && rm -rf node_modules",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "turbo run build --filter=!@trenchsniper/docs && changeset publish"
+    "release": "turbo run build --filter=!@trenchtools/docs && changeset publish"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.1",
