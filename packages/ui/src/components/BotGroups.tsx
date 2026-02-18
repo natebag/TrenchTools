@@ -137,10 +137,16 @@ export function BotGroups() {
   // Runtime state (in-memory)
   const runtimesRef = useRef<Map<string, BotGroupRuntime>>(new Map())
   const [, setRuntimeVersion] = useState(0) // force re-render
+  // Always-current refs to break stale closures in setTimeout chains
+  const walletsRef = useRef(wallets)
+  walletsRef.current = wallets
+  const configsRef = useRef(configs)
+  configsRef.current = configs
+
+  // Per-wallet keys: `${botId}::${walletId}` — each wallet runs its own parallel trade loop
   const tradeLoopRefs = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const isExecutingRef = useRef<Map<string, boolean>>(new Map())
   const requireBuyFirstRef = useRef<Map<string, boolean>>(new Map())
-  const walletCycleIndexRef = useRef<Map<string, number>>(new Map())
   const lastTradeAtRef = useRef<Map<string, number>>(new Map())
 
   // UI state
@@ -264,14 +270,17 @@ export function BotGroups() {
 
   // ── Trade Engine ───────────────────────────────────────────
 
-  const executeBotTrade = useCallback(async (botId: string) => {
-    const config = configs.find(c => c.id === botId)
+  const executeBotTrade = useCallback(async (botId: string, walletId?: string) => {
+    // Read from refs to avoid stale closures in setTimeout chains
+    const config = configsRef.current.find(c => c.id === botId)
     const runtime = getRuntime(botId)
     if (!config || runtime.status !== 'running') return
 
-    if (isExecutingRef.current.get(botId)) return
-    isExecutingRef.current.set(botId, true)
-    lastTradeAtRef.current.set(botId, Date.now())
+    // If walletId provided, use per-wallet locking; otherwise fall back to per-bot (shouldn't happen)
+    const lockKey = walletId ? `${botId}::${walletId}` : botId
+    if (isExecutingRef.current.get(lockKey)) return
+    isExecutingRef.current.set(lockKey, true)
+    lastTradeAtRef.current.set(lockKey, Date.now())
 
     try {
       const allKeypairs = getKeypairs()
@@ -308,12 +317,10 @@ export function BotGroups() {
         slippageBps: 200,
       }
 
-      // Pick wallet (round-robin)
-      const cycleIndex = walletCycleIndexRef.current.get(botId) || 0
-      const walletId = runtime.walletIds[cycleIndex % runtime.walletIds.length]
-      walletCycleIndexRef.current.set(botId, cycleIndex + 1)
-
-      const wallet = wallets.find(w => w.id === walletId)
+      // Pick wallet — use specific wallet if provided, otherwise first (fallback)
+      const targetWalletId = walletId || runtime.walletIds[0]
+      const currentWallets = walletsRef.current
+      const wallet = currentWallets.find(w => w.id === targetWalletId)
       const signer = allKeypairs.find(kp => kp.publicKey.toBase58() === wallet?.address)
       if (!wallet || !signer) throw new Error('Wallet/signer not found')
 
@@ -337,7 +344,7 @@ export function BotGroups() {
       const canBuy = spendableLamports >= minBuyLamports
       const hasTokens = tokenRawBalance > 0n
 
-      const requireBuy = requireBuyFirstRef.current.get(botId) ?? true
+      const requireBuy = requireBuyFirstRef.current.get(lockKey) ?? true
       const preferBuy = requireBuy || Math.random() > 0.5
 
       const amount = config.minSwapSol + Math.random() * (config.maxSwapSol - config.minSwapSol)
@@ -390,7 +397,7 @@ export function BotGroups() {
       })
 
       if (tradeType === 'buy') {
-        requireBuyFirstRef.current.set(botId, false)
+        requireBuyFirstRef.current.set(lockKey, false)
       }
 
       // Update stats
@@ -403,20 +410,20 @@ export function BotGroups() {
         },
       })
     } catch (err) {
-      console.error(`Bot ${botId} trade error:`, err)
+      console.error(`Bot ${botId} wallet ${walletId} trade error:`, err)
     } finally {
-      isExecutingRef.current.set(botId, false)
+      isExecutingRef.current.set(lockKey, false)
     }
 
-    // Schedule next trade
+    // Schedule next trade for THIS wallet
     const rt = getRuntime(botId)
-    const cfg = configs.find(c => c.id === botId)
-    if (rt.status === 'running' && cfg) {
+    const cfg = configsRef.current.find(c => c.id === botId)
+    if (rt.status === 'running' && cfg && walletId) {
       const delay = cfg.minIntervalMs + Math.random() * (cfg.maxIntervalMs - cfg.minIntervalMs)
-      const timeoutId = setTimeout(() => executeBotTrade(botId), delay)
-      tradeLoopRefs.current.set(botId, timeoutId)
+      const timeoutId = setTimeout(() => executeBotTrade(botId, walletId), delay)
+      tradeLoopRefs.current.set(lockKey, timeoutId)
     }
-  }, [configs, getRuntime, setRuntime, getKeypairs, wallets, rpcUrl, jupiterApiKey, addTrade])
+  }, [getRuntime, setRuntime, getKeypairs, rpcUrl, jupiterApiKey, addTrade])
 
   // ── START lifecycle ────────────────────────────────────────
 
@@ -485,10 +492,8 @@ export function BotGroups() {
       const sig = await connection.sendRawTransaction(fundTx.serialize(), { skipPreflight: false, maxRetries: 3 })
       await confirmTx(connection, sig, blockhash, lastValidBlockHeight)
 
-      // 3. Start trade loop
+      // 3. Start parallel trade loops
       addToken({ mint: config.targetToken, source: 'volume' })
-      requireBuyFirstRef.current.set(botId, true)
-      walletCycleIndexRef.current.set(botId, 0)
 
       setRuntime(botId, {
         status: 'running',
@@ -497,10 +502,16 @@ export function BotGroups() {
         error: null,
       })
 
-      // Kick off first trade
-      const delay = config.minIntervalMs + Math.random() * (config.maxIntervalMs - config.minIntervalMs)
-      const timeoutId = setTimeout(() => executeBotTrade(botId), delay)
-      tradeLoopRefs.current.set(botId, timeoutId)
+      // Kick off parallel trade loops — one per wallet, staggered start
+      for (let i = 0; i < walletIds.length; i++) {
+        const wId = walletIds[i]
+        const loopKey = `${config.id}::${wId}`
+        requireBuyFirstRef.current.set(loopKey, true)
+        // Stagger: wallet 0 starts after 2-5s, each subsequent wallet offset by 3-8s
+        const stagger = (2000 + Math.random() * 3000) + i * (3000 + Math.random() * 5000)
+        const timeoutId = setTimeout(() => executeBotTrade(config.id, wId), stagger)
+        tradeLoopRefs.current.set(loopKey, timeoutId)
+      }
 
       setFeedback({ type: 'success', message: `${config.name} started! ${config.walletCount} wallets funded with ${config.solPerWallet} SOL each` })
     } catch (err) {
@@ -516,10 +527,16 @@ export function BotGroups() {
     const runtime = getRuntime(botId)
     if (!config || (runtime.status !== 'running' && runtime.status !== 'error')) return
 
-    // 1. Stop trade loop
-    const loopRef = tradeLoopRefs.current.get(botId)
-    if (loopRef) clearTimeout(loopRef)
-    tradeLoopRefs.current.delete(botId)
+    // 1. Stop all per-wallet trade loops
+    for (const walletId of runtime.walletIds) {
+      const loopKey = `${botId}::${walletId}`
+      const loopRef = tradeLoopRefs.current.get(loopKey)
+      if (loopRef) clearTimeout(loopRef)
+      tradeLoopRefs.current.delete(loopKey)
+      isExecutingRef.current.delete(loopKey)
+      requireBuyFirstRef.current.delete(loopKey)
+      lastTradeAtRef.current.delete(loopKey)
+    }
 
     setRuntime(botId, { status: 'stopping' })
 
@@ -756,8 +773,6 @@ export function BotGroups() {
     }
 
     addToken({ mint: config.targetToken, source: 'volume' })
-    requireBuyFirstRef.current.set(botId, true)
-    walletCycleIndexRef.current.set(botId, 0)
 
     setRuntime(botId, {
       status: 'running',
@@ -766,9 +781,15 @@ export function BotGroups() {
       error: null,
     })
 
-    const delay = config.minIntervalMs + Math.random() * (config.maxIntervalMs - config.minIntervalMs)
-    const timeoutId = setTimeout(() => executeBotTrade(botId), delay)
-    tradeLoopRefs.current.set(botId, timeoutId)
+    // Kick off parallel trade loops — one per wallet, staggered start
+    for (let i = 0; i < orphanIds.length; i++) {
+      const wId = orphanIds[i]
+      const loopKey = `${botId}::${wId}`
+      requireBuyFirstRef.current.set(loopKey, true)
+      const stagger = (2000 + Math.random() * 3000) + i * (3000 + Math.random() * 5000)
+      const timeoutId = setTimeout(() => executeBotTrade(botId, wId), stagger)
+      tradeLoopRefs.current.set(loopKey, timeoutId)
+    }
 
     setFeedback({ type: 'success', message: `${config.name} resumed with ${orphanIds.length} existing wallets` })
   }, [configs, getOrphanedWalletIds, isLocked, addToken, setRuntime, executeBotTrade])
@@ -935,15 +956,20 @@ export function BotGroups() {
       if (document.visibilityState !== 'visible') return
 
       for (const config of runningBots) {
-        const lastAt = lastTradeAtRef.current.get(config.id)
+        const runtime = getRuntime(config.id)
         const staleThreshold = Math.max(config.maxIntervalMs * 2, 60000)
-        if (!lastAt || Date.now() - lastAt >= staleThreshold) {
-          // Restart trade loop
-          const existing = tradeLoopRefs.current.get(config.id)
-          if (existing) clearTimeout(existing)
-          const delay = config.minIntervalMs + Math.random() * (config.maxIntervalMs - config.minIntervalMs)
-          const tid = setTimeout(() => executeBotTrade(config.id), delay)
-          tradeLoopRefs.current.set(config.id, tid)
+
+        // Restart stale per-wallet trade loops
+        for (const wId of runtime.walletIds) {
+          const loopKey = `${config.id}::${wId}`
+          const lastAt = lastTradeAtRef.current.get(loopKey)
+          if (!lastAt || Date.now() - lastAt >= staleThreshold) {
+            const existing = tradeLoopRefs.current.get(loopKey)
+            if (existing) clearTimeout(existing)
+            const delay = config.minIntervalMs + Math.random() * (config.maxIntervalMs - config.minIntervalMs)
+            const tid = setTimeout(() => executeBotTrade(config.id, wId), delay)
+            tradeLoopRefs.current.set(loopKey, tid)
+          }
         }
       }
     }
