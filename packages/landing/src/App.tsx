@@ -30,7 +30,7 @@ function App() {
               <a href="#how-it-works" className="text-slate-400 hover:text-white transition-colors">How it Works</a>
               <a href="#dashboard" className="text-slate-400 hover:text-white transition-colors">Dashboard</a>
               <a
-                href="https://github.com/natebag/TrenchSniper-OS"
+                href="https://github.com/natebag/Trenchtools"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-lg transition-colors"
@@ -80,7 +80,7 @@ function App() {
                 <ArrowRight className="w-5 h-5" />
               </a>
               <a
-                href="https://github.com/natebag/TrenchSniper-OS"
+                href="https://github.com/natebag/Trenchtools"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 px-8 py-4 rounded-xl text-lg font-semibold transition-all hover:scale-105"
@@ -176,7 +176,7 @@ function App() {
               number="01"
               title="Clone & Configure"
               description="Clone the repo, install dependencies, and configure your environment with your RPC endpoints and wallet keys."
-              code="git clone https://github.com/natebag/TrenchSniper-OS && pnpm install"
+              code="git clone https://github.com/natebag/Trenchtools && pnpm install"
             />
             <StepCard
               number="02"
@@ -308,7 +308,7 @@ function App() {
           
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
             <a
-              href="https://github.com/natebag/TrenchSniper-OS"
+              href="https://github.com/natebag/Trenchtools"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2 bg-white text-slate-900 hover:bg-slate-100 px-8 py-4 rounded-xl text-lg font-semibold transition-all hover:scale-105"
@@ -318,7 +318,7 @@ function App() {
               <ExternalLink className="w-4 h-4" />
             </a>
             <a
-              href="https://github.com/natebag/TrenchSniper-OS/issues"
+              href="https://github.com/natebag/Trenchtools/issues"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 px-8 py-4 rounded-xl text-lg font-semibold transition-all hover:scale-105"
@@ -377,17 +377,17 @@ function App() {
               <h4 className="font-semibold mb-4">Resources</h4>
               <ul className="space-y-2 text-slate-400">
                 <li>
-                  <a href="https://github.com/natebag/TrenchSniper-OS" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                  <a href="https://github.com/natebag/Trenchtools" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
                     GitHub
                   </a>
                 </li>
                 <li>
-                  <a href="https://github.com/natebag/TrenchSniper-OS#readme" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                  <a href="https://github.com/natebag/Trenchtools#readme" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
                     Documentation
                   </a>
                 </li>
                 <li>
-                  <a href="https://github.com/natebag/TrenchSniper-OS/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                  <a href="https://github.com/natebag/Trenchtools/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
                     Contributing
                   </a>
                 </li>
@@ -398,7 +398,7 @@ function App() {
               <h4 className="font-semibold mb-4">Community</h4>
               <div className="flex gap-4">
                 <a
-                  href="https://github.com/natebag/TrenchSniper-OS"
+                  href="https://github.com/natebag/Trenchtools"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-10 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center transition-colors"
