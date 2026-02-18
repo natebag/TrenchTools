@@ -1,5 +1,5 @@
 /**
- * @trenchsniper/revenue
+ * @trenchtools/revenue
  * Revenue features for TrenchSniper OS
  */
 export * from './fees.js';

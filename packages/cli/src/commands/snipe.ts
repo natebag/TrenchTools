@@ -65,7 +65,7 @@ export async function snipeCommand(
     spinner.text = 'Checking token status...';
 
     // Dynamic import to handle ESM
-    const { PumpFunClient, TokenNotFoundError, TokenMigratedError } = await import('@trenchsniper/core/snipe');
+    const { PumpFunClient, TokenNotFoundError, TokenMigratedError } = await import('@trenchtools/core/snipe');
 
     const client = new PumpFunClient(connection);
     const tokenInfo = await client.getTokenInfo(tokenMint);

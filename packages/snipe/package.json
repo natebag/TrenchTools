@@ -1,7 +1,7 @@
 {
-  "name": "@trenchsniper/snipe",
+  "name": "@trenchtools/snipe",
   "version": "0.0.1",
-  "description": "TrenchSniper OS - Token Sniping Engine",
+  "description": "TrenchTools Token Sniping Engine",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -19,7 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@trenchsniper/core": "workspace:*",
+    "@trenchtools/core": "workspace:*",
     "@solana/web3.js": "^1.95.0",
     "@solana/spl-token": "^0.4.0",
     "bs58": "^6.0.0"

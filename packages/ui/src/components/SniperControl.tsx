@@ -3,7 +3,7 @@
  * TrenchSniper OS
  * 
  * Wired to real:
- * - SniperGuardManager from @trenchsniper/core
+ * - SniperGuardManager from @trenchtools/core
  * - WalletContext for persisted config
  * - Real position tracking and auto-sell triggers
  */
@@ -24,7 +24,7 @@ import {
 import {
   SniperGuardManager,
   type Position,
-} from '@trenchsniper/core';
+} from '@trenchtools/core';
 import { useWallet } from '@/context/WalletContext';
 import { useActiveTokens } from '@/context/ActiveTokensContext';
 

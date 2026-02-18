@@ -11,7 +11,7 @@ import {
   type BrowserWalletData,
   BrowserDecryptionError,
   isBrowserCryptoAvailable,
-} from '@trenchsniper/core';
+} from '@trenchtools/core';
 import type { Wallet } from '@/types';
 
 // ============ Types ============

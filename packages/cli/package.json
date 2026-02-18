@@ -1,7 +1,7 @@
 {
-  "name": "@trenchsniper/cli",
+  "name": "@trenchtools/cli",
   "version": "0.0.1",
-  "description": "TrenchSniper OS Command Line Interface",
+  "description": "TrenchTools Command Line Interface",
   "type": "module",
   "bin": {
     "trench": "./dist/index.js"
@@ -15,8 +15,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@trenchsniper/core": "workspace:*",
-    "@trenchsniper/snipe": "workspace:*",
+    "@trenchtools/core": "workspace:*",
+    "@trenchtools/snipe": "workspace:*",
     "@solana/web3.js": "^1.95.0",
     "@solana/spl-token": "^0.4.0",
     "commander": "^12.1.0",

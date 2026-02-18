@@ -4,7 +4,7 @@ import {
   detectTokenVenues,
   getPumpSwapCanonicalFeeProfile,
   estimateRunout,
-} from '@trenchsniper/core';
+} from '@trenchtools/core';
 import { stateManager } from '../state/index.js';
 
 function isValidSolanaMint(address: string): boolean {

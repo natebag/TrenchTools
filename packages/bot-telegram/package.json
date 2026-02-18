@@ -1,7 +1,7 @@
 {
-  "name": "@trenchsniper/bot-telegram",
+  "name": "@trenchtools/bot-telegram",
   "version": "0.1.0",
-  "description": "Telegram Bot for TrenchSniper OS - Real-time snipe alerts and wallet notifications",
+  "description": "Telegram Bot for TrenchTools - Real-time snipe alerts and wallet notifications",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -30,8 +30,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@trenchsniper/core": "workspace:*",
-    "@trenchsniper/snipe": "workspace:*",
+    "@trenchtools/core": "workspace:*",
+    "@trenchtools/snipe": "workspace:*",
     "telegraf": "^4.16.3",
     "dotenv": "^16.4.5",
     "ky": "^1.2.0"

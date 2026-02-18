@@ -1,5 +1,5 @@
 /**
- * @trenchsniper/pnl
+ * @trenchtools/pnl
  * Profit and Loss tracking for TrenchSniper OS
  */
 export * from './types.js';

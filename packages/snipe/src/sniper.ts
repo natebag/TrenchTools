@@ -118,7 +118,7 @@ export class TokenSniper {
     }
 
     // Import PumpFun client dynamically
-    const { PumpFunClient } = await import('@trenchsniper/core');
+    const { PumpFunClient } = await import('@trenchtools/core');
     const client = new PumpFunClient(this.connection);
 
     // Check token status
@@ -226,7 +226,7 @@ export class TokenSniper {
     }
 
     // Import PumpFun client
-    const { PumpFunClient } = await import('@trenchsniper/core');
+    const { PumpFunClient } = await import('@trenchtools/core');
     const client = new PumpFunClient(this.connection);
 
     // Check token status

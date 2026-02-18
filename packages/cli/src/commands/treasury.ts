@@ -12,7 +12,7 @@ import {
   getTreasuryQR,
   getFundingHistory,
   recordExternalFunding,
-} from '@trenchsniper/core';
+} from '@trenchtools/core';
 
 export const treasuryCommand = new Command('treasury')
   .description('Main wallet treasury management')
@@ -85,7 +85,7 @@ function getTreasuryConfigFromEnv() {
   }
 
   // Generate sniper wallets from mnemonic
-  const { generateWallets } = require('@trenchsniper/core');
+  const { generateWallets } = require('@trenchtools/core');
   const count = parseInt(process.env.WALLET_COUNT || '5');
   const wallets = generateWallets(mainWallet, count);
 
@@ -99,7 +99,7 @@ function getTreasuryConfigFromEnv() {
 
 function getMainWallet() {
   // Load keypair from mnemonic
-  const { generateWallets } = require('@trenchsniper/core');
+  const { generateWallets } = require('@trenchtools/core');
   const mnemonic = process.env.WALLET_MNEMONIC || process.env.MAIN_WALLET;
   if (!mnemonic) throw new Error('Set WALLET_MNEMONIC');
   return generateWallets(mnemonic, 1)[0].keypair;

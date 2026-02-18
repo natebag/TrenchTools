@@ -1,14 +1,14 @@
-# TrenchSniper OS 🎯
+# TrenchTools 🎯
 
-**Open-source alternative to Proxima.tools for Solana token launching and sniping.**
+**Open-source alternative to Proxima.tools for Solana market making and trading.**
 
 > Democratize the trenches. Free the tools.
 
 ## Overview
 
-TrenchSniper OS provides professional-grade token launching, sniping, and trading tools for the Solana ecosystem - **completely free and open source**.
+TrenchTools provides professional-grade token launching, sniping, and trading tools for the Solana ecosystem - **completely free and open source**.
 
-While paid tools like Proxima charge hundreds per month for access, TrenchSniper OS puts the same capabilities in everyone's hands.
+While paid tools like Proxima charge hundreds per month for access, TrenchTools puts the same capabilities in everyone's hands.
 
 ---
 

@@ -1,6 +1,6 @@
 # Detection Guide
 
-This guide explains how TrenchSniper-OS's detection module identifies market manipulation patterns in token trading activity.
+This guide explains how TrenchTools's detection module identifies market manipulation patterns in token trading activity.
 
 ## What the Detection Module Does
 

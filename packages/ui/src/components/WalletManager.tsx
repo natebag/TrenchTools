@@ -3,7 +3,7 @@
  * TrenchSniper OS
  * 
  * Wired to real:
- * - generate() from @trenchsniper/core for HD wallet derivation
+ * - generate() from @trenchtools/core for HD wallet derivation
  * - generateMnemonic() for new seed phrases
  * - WalletContext for state persistence
  * - Real encryption status from vault
@@ -32,7 +32,7 @@ import {
   generateMnemonic,
   validateMnemonic,
   keypairsToWalletData,
-} from '@trenchsniper/core';
+} from '@trenchtools/core';
 import { useWallet } from '@/context/WalletContext';
 
 export function WalletManager() {
@@ -71,7 +71,7 @@ export function WalletManager() {
     setTimeout(() => setSuccess(null), 2000);
   }, []);
 
-  // Generate real wallets using @trenchsniper/core
+  // Generate real wallets using @trenchtools/core
   const handleGenerateWallets = useCallback(async () => {
     setGenerating(true);
     setError(null);

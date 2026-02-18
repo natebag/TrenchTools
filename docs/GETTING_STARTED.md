@@ -1,10 +1,10 @@
-# Getting Started with TrenchSniper-OS
+# Getting Started with TrenchTools
 
-Welcome to TrenchSniper-OS! This guide will walk you through installation, setup, and your first steps with the platform.
+Welcome to TrenchTools! This guide will walk you through installation, setup, and your first steps with the platform.
 
 ## Prerequisites
 
-Before installing TrenchSniper-OS, ensure you have the following:
+Before installing TrenchTools, ensure you have the following:
 
 ### Required Software
 
@@ -55,8 +55,8 @@ corepack prepare pnpm@latest --activate
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/natebag/TrenchSniper-OS.git
-cd TrenchSniper-OS
+git clone https://github.com/natebag/TrenchTools.git
+cd TrenchTools
 ```
 
 ### 2. Install Dependencies
@@ -116,7 +116,7 @@ pnpm dev
 
 The UI will be available at `http://localhost:5173`
 
-[Screenshot: TrenchSniper-OS Dashboard showing the main navigation and overview stats]
+[Screenshot: TrenchTools Dashboard showing the main navigation and overview stats]
 
 ### Using the CLI
 
@@ -135,7 +135,7 @@ pnpm cli wallet --generate 5
 
 ## Creating Your First Wallet Vault
 
-TrenchSniper-OS uses encrypted wallet vaults to securely store your trading wallets.
+TrenchTools uses encrypted wallet vaults to securely store your trading wallets.
 
 ### Via the UI
 
@@ -214,7 +214,7 @@ pnpm cli snipe <TOKEN> --amount 0.1 --network devnet
 Understanding the codebase:
 
 ```
-TrenchSniper-OS/
+TrenchTools/
 ├── packages/
 │   ├── core/          # Core trading modules & wallet management
 │   ├── snipe/         # Sniping engine with Jito support
@@ -247,4 +247,4 @@ Now that you're set up, explore these guides:
 
 ---
 
-*TrenchSniper-OS - Democratize the trenches. Free the tools.* 🎯
+*TrenchTools - Democratize the trenches. Free the tools.* 🎯
