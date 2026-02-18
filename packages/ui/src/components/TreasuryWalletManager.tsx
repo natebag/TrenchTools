@@ -119,6 +119,7 @@ export function TreasuryWalletManager() {
   const [fundTarget, setFundTarget] = useState<string | null>(null);
   const [fundAmount, setFundAmount] = useState('0.01');
   const [newWalletName, setNewWalletName] = useState('');
+  const [newWalletType, setNewWalletType] = useState<'sniper' | 'treasury' | 'burner'>('sniper');
   const [importKey, setImportKey] = useState('');
   const [isFunding, setIsFunding] = useState(false);
   const [fundTxHash, setFundTxHash] = useState<string | null>(null);
@@ -639,18 +640,19 @@ export function TreasuryWalletManager() {
     try {
       if (importKey) {
         const keyArray = JSON.parse(importKey);
-        await importWallet(new Uint8Array(keyArray), newWalletName, 'sniper', password);
+        await importWallet(new Uint8Array(keyArray), newWalletName, newWalletType, password);
       } else {
-        await generateWallet(newWalletName, 'sniper', password);
+        await generateWallet(newWalletName, newWalletType, password);
       }
       setShowAddWalletModal(false);
       setNewWalletName('');
+      setNewWalletType('sniper');
       setImportKey('');
       showSuccess('Sub-wallet added!');
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [newWalletName, importKey, password, generateWallet, importWallet, showSuccess]);
+  }, [newWalletName, newWalletType, importKey, password, generateWallet, importWallet, showSuccess]);
 
   // Fund sub-wallet from treasury
   const handleFund = useCallback(async () => {
@@ -1730,3 +1732,5 @@ function Modal({ children, onClose }: { children: React.ReactNode; onClose: () =
 }
 
 export default TreasuryWalletManager;
+
+
