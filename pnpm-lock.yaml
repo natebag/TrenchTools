@@ -30,7 +30,7 @@ importers:
       '@solana/web3.js':
         specifier: ^1.98.4
         version: 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)
-      '@trenchsniper/core':
+      '@trenchtools/core':
         specifier: workspace:*
         version: link:../core
       cors:
@@ -70,10 +70,10 @@ importers:
 
   packages/bot-telegram:
     dependencies:
-      '@trenchsniper/core':
+      '@trenchtools/core':
         specifier: workspace:*
         version: link:../core
-      '@trenchsniper/snipe':
+      '@trenchtools/snipe':
         specifier: workspace:*
         version: link:../snipe
       dotenv:
@@ -107,10 +107,10 @@ importers:
       '@solana/web3.js':
         specifier: ^1.95.0
         version: 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)
-      '@trenchsniper/core':
+      '@trenchtools/core':
         specifier: workspace:*
         version: link:../core
-      '@trenchsniper/snipe':
+      '@trenchtools/snipe':
         specifier: workspace:*
         version: link:../snipe
       chalk:
@@ -218,7 +218,7 @@ importers:
       '@solana/web3.js':
         specifier: ^1.95.0
         version: 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)
-      '@trenchsniper/core':
+      '@trenchtools/core':
         specifier: workspace:*
         version: link:../core
       bs58:
@@ -246,7 +246,7 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.17.0
         version: 5.90.20(react@18.3.1)
-      '@trenchsniper/core':
+      '@trenchtools/core':
         specifier: workspace:*
         version: link:../core
       clsx:

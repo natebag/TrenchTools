@@ -25,8 +25,7 @@ export interface BrowserWalletData {
   publicKey: string;
   secretKey: number[];  // Uint8Array as JSON-safe array
   createdAt: number;
-  name?: string;
-}
+  name?: string;\n  type?: 'sniper' | 'treasury' | 'burner';\n}
 
 export interface BrowserWalletExport {
   version: number;
