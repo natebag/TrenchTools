@@ -43,6 +43,7 @@ export interface DexConfig {
   rpcUrl: string;
   apiKey?: string;
   slippageBps?: number;     // Default: 200 (2%)
+  heliusApiKey?: string;    // Optional: enables smart priority fee estimation
 }
 
 /**

@@ -10,6 +10,31 @@ import type { DexSwapper, Quote, SwapResult, DexConfig } from './types';
 
 const JUPITER_API_URL = 'https://api.jup.ag/swap/v1';
 
+/**
+ * Fetch recommended priority fee from Helius API.
+ * Returns microlamports per compute unit, or null on failure (falls back to default).
+ */
+export async function getHeliusPriorityFee(heliusApiKey: string): Promise<number | null> {
+  try {
+    const resp = await fetch(`https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'priority-fee',
+        method: 'getPriorityFeeEstimate',
+        params: [{ options: { priorityLevel: 'High' } }],
+      }),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const fee = data?.result?.priorityFeeEstimate;
+    return typeof fee === 'number' ? fee : null;
+  } catch {
+    return null;
+  }
+}
+
 export const jupiterSwapper: DexSwapper = {
   name: 'Jupiter',
   type: 'jupiter',
@@ -74,6 +99,15 @@ export const jupiterSwapper: DexSwapper = {
         headers['x-api-key'] = config.apiKey;
       }
 
+      // Determine priority fee: use Helius estimate if available, else Jupiter auto
+      let prioritizationFeeLamports: string | number = 'auto';
+      if (config.heliusApiKey) {
+        const heliusFee = await getHeliusPriorityFee(config.heliusApiKey);
+        if (heliusFee !== null) {
+          prioritizationFeeLamports = heliusFee;
+        }
+      }
+
       // Get swap transaction from Jupiter
       const swapResponse = await fetch(`${JUPITER_API_URL}/swap`, {
         method: 'POST',
@@ -83,7 +117,7 @@ export const jupiterSwapper: DexSwapper = {
           userPublicKey: walletAddress,
           wrapAndUnwrapSol: true,
           dynamicComputeUnitLimit: true,
-          prioritizationFeeLamports: 'auto',
+          prioritizationFeeLamports,
         }),
       });
 

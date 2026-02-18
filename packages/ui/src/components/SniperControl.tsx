@@ -253,6 +253,7 @@ export function SniperControl() {
 
     // Check Jupiter API key only if using Jupiter
     const jupiterApiKey = localStorage.getItem('jupiter_api_key') || '';
+    const heliusApiKey = localStorage.getItem('helius_api_key') || '';
     if (dexToUse === 'jupiter' && !jupiterApiKey) {
       setError('Jupiter API key required. Set it in Settings.');
       setLoading(false);
@@ -288,6 +289,7 @@ export function SniperControl() {
       rpcUrl,
       apiKey: dexToUse === 'jupiter' ? jupiterApiKey : undefined,
       slippageBps: Math.round(localConfig.slippage * 100),
+      heliusApiKey: heliusApiKey || undefined,
     };
     const buyLamports = Math.max(1, Math.floor(localConfig.amount * LAMPORTS_PER_SOL));
 
@@ -499,6 +501,7 @@ export function SniperControl() {
     } catch { /* Default to Jupiter */ }
 
     const jupiterApiKey = localStorage.getItem('jupiter_api_key') || '';
+    const heliusApiKey2 = localStorage.getItem('helius_api_key') || '';
     if (dexToUse === 'jupiter' && !jupiterApiKey) {
       setError('Jupiter API key required for graduated tokens. Set it in Settings.');
       setSellingMint(null);
@@ -509,6 +512,7 @@ export function SniperControl() {
       rpcUrl,
       apiKey: dexToUse === 'jupiter' ? jupiterApiKey : undefined,
       slippageBps: Math.round(localConfig.slippage * 100),
+      heliusApiKey: heliusApiKey2 || undefined,
     };
 
     setRecentActivity(prev => [{
@@ -583,7 +587,7 @@ export function SniperControl() {
             throw primaryErr; // Can't fallback to Jupiter without API key
           }
           try {
-            const fbConfig: DexConfig = { rpcUrl, apiKey: fallbackDex === 'jupiter' ? jupiterApiKey : undefined, slippageBps: dexConfig.slippageBps };
+            const fbConfig: DexConfig = { rpcUrl, apiKey: fallbackDex === 'jupiter' ? jupiterApiKey : undefined, slippageBps: dexConfig.slippageBps, heliusApiKey: heliusApiKey2 || undefined };
             const quote = await getQuote(fallbackDex, tokenMint, WSOL_MINT, rawAmount, fbConfig);
             const result = await dexExecuteSwap(quote, signer, fbConfig);
             if (result.success) {

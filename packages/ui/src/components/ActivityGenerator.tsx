@@ -29,6 +29,7 @@ import { useNetwork } from '@/context/NetworkContext';
 import {
   getQuote,
   executeSwap as dexExecuteSwap,
+  getHeliusPriorityFee,
   type DexConfig,
 } from '@/lib/dex';
 import {
@@ -36,6 +37,7 @@ import {
   PublicKey,
   SystemProgram,
   Transaction,
+  ComputeBudgetProgram,
   LAMPORTS_PER_SOL,
 } from '@solana/web3.js';
 
@@ -517,13 +519,12 @@ export function ActivityGenerator() {
   const { rpcUrl, network } = useNetwork();
   const { isLocked, getKeypairs } = useSecureWallet({ rpcUrl });
 
-  // Jupiter API key from settings
+  // API keys from settings
   const jupiterApiKey = useMemo(() => {
-    try {
-      const s = localStorage.getItem('trench_settings');
-      if (s) return JSON.parse(s)?.jupiterApiKey || '';
-    } catch { /* ignore */ }
-    return '';
+    return localStorage.getItem('jupiter_api_key') || '';
+  }, []);
+  const heliusApiKey = useMemo(() => {
+    return localStorage.getItem('helius_api_key') || '';
   }, []);
 
   // Config with localStorage persistence
@@ -639,6 +640,7 @@ export function ActivityGenerator() {
       rpcUrl,
       apiKey: jupiterApiKey || undefined,
       slippageBps: 200,
+      heliusApiKey: heliusApiKey || undefined,
     };
 
     // Check holdings for possible sell
@@ -709,7 +711,7 @@ export function ActivityGenerator() {
       description: `Swap SOL → ${token.symbol}`,
       error: result.error,
     };
-  }, [getKeypairs, rpcUrl, jupiterApiKey]);
+  }, [getKeypairs, rpcUrl, jupiterApiKey, heliusApiKey]);
 
   const executeTransferAction = useCallback(async (
     walletId: string,
@@ -739,7 +741,19 @@ export function ActivityGenerator() {
     const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
 
     const lamports = Math.floor(amountSol * LAMPORTS_PER_SOL);
-    const transaction = new Transaction().add(
+    const transaction = new Transaction();
+
+    // Add priority fee if Helius key is available
+    if (heliusApiKey) {
+      const fee = await getHeliusPriorityFee(heliusApiKey);
+      if (fee !== null) {
+        transaction.add(
+          ComputeBudgetProgram.setComputeUnitPrice({ microLamports: fee }),
+        );
+      }
+    }
+
+    transaction.add(
       SystemProgram.transfer({
         fromPubkey: signer.publicKey,
         toPubkey: new PublicKey(toWallet.address),
@@ -767,7 +781,7 @@ export function ActivityGenerator() {
       txHash: signature,
       description: `Transfer ${amountSol.toFixed(4)} SOL: ${fromShort} → ${toShort}`,
     };
-  }, [getKeypairs, rpcUrl]);
+  }, [getKeypairs, rpcUrl, heliusApiKey]);
 
   const executeAction = useCallback(async (walletId: string) => {
     const currentConfig = configRef.current;
@@ -864,6 +878,7 @@ export function ActivityGenerator() {
       rpcUrl,
       apiKey: jupiterApiKey || undefined,
       slippageBps: 200,
+      heliusApiKey: heliusApiKey || undefined,
     };
 
     let sold = 0;
@@ -965,7 +980,7 @@ export function ActivityGenerator() {
 
     addActivity({ type: sold > 0 ? 'sell' : 'fund', description: summaryParts.join(' ') });
     setIsSelling(false);
-  }, [getKeypairs, rpcUrl, jupiterApiKey, addActivity]);
+  }, [getKeypairs, rpcUrl, jupiterApiKey, heliusApiKey, addActivity]);
 
   // ─── Trade Loop ──────────────────────────────────────────────────────────
 

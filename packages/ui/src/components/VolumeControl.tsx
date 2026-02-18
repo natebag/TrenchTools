@@ -257,6 +257,7 @@ export function VolumeControl() {
   const [txLogs, setTxLogs] = useState<TransactionLog[]>([])
   const [startTime, setStartTime] = useState<number | null>(null)
   const [jupiterApiKey] = useState(() => localStorage.getItem('jupiter_api_key') || '')
+  const [heliusApiKey] = useState(() => localStorage.getItem('helius_api_key') || '')
   const [useRealTrades, setUseRealTrades] = useState(false)
   const [selectedWalletIds, setSelectedWalletIds] = useState<string[]>([])
   const [resumeTick, setResumeTick] = useState(0)
@@ -416,6 +417,7 @@ export function VolumeControl() {
       rpcUrl,
       apiKey: effectiveDex === 'jupiter' ? (jupiterApiKey || undefined) : undefined,
       slippageBps: 200, // 2% slippage
+      heliusApiKey: heliusApiKey || undefined,
     };
 
     const keypairByAddress = new Map(

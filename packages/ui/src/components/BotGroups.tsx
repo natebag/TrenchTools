@@ -169,6 +169,7 @@ export function BotGroups() {
   const [showAdvanced, setShowAdvanced] = useState(false)
 
   const jupiterApiKey = localStorage.getItem('jupiter_api_key') || ''
+  const heliusApiKey = localStorage.getItem('helius_api_key') || ''
 
   // Helper: get runtime (with defaults)
   const getRuntime = useCallback((botId: string): BotGroupRuntime => {
@@ -315,6 +316,7 @@ export function BotGroups() {
         rpcUrl,
         apiKey: effectiveDex === 'jupiter' ? jupiterApiKey : undefined,
         slippageBps: 200,
+        heliusApiKey: heliusApiKey || undefined,
       }
 
       // Pick wallet — use specific wallet if provided, otherwise first (fallback)
@@ -652,7 +654,7 @@ export function BotGroups() {
           } catch (jupErr) {
             // Fallback: PumpFun sell
             try {
-              const pfConfig: DexConfig = { rpcUrl, slippageBps: 200 }
+              const pfConfig: DexConfig = { rpcUrl, slippageBps: 200, heliusApiKey: heliusApiKey || undefined }
               const pfQuote = await dexGetQuote('pumpfun', token.mint, WSOL_MINT, parseInt(token.amountRaw), pfConfig)
               const pfResult = await dexExecuteSwap(pfQuote, signer, pfConfig)
               if (pfResult.success) {
@@ -850,7 +852,7 @@ export function BotGroups() {
 
         for (const token of holdings) {
           try {
-            const pfConfig: DexConfig = { rpcUrl, slippageBps: 200 }
+            const pfConfig: DexConfig = { rpcUrl, slippageBps: 200, heliusApiKey: heliusApiKey || undefined }
             const pfQuote = await dexGetQuote('pumpfun', token.mint, WSOL_MINT, parseInt(token.amountRaw), pfConfig)
             const pfResult = await dexExecuteSwap(pfQuote, signer, pfConfig)
             if (!pfResult.success) throw new Error('PumpFun sell failed')
