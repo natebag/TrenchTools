@@ -18,7 +18,7 @@ import type { DexSwapper, DexType, DexConfig, Quote, SwapResult } from './types'
 import { DEX_INFO } from './types';
 
 // Re-export individual swappers
-export { jupiterSwapper } from './jupiter';
+export { jupiterSwapper, getHeliusPriorityFee } from './jupiter';
 export { raydiumSwapper } from './raydium';
 export { meteoraSwapper } from './meteora';
 export { pumpfunSwapper } from './pumpfun';

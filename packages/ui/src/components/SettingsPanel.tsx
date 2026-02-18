@@ -17,6 +17,8 @@ export function SettingsPanel() {
   const [rpcSaved, setRpcSaved] = useState(false);
   const [jupiterKey, setJupiterKey] = useState(() => localStorage.getItem('jupiter_api_key') || '');
   const [jupiterSaved, setJupiterSaved] = useState(false);
+  const [heliusKey, setHeliusKey] = useState(() => localStorage.getItem('helius_api_key') || '');
+  const [heliusSaved, setHeliusSaved] = useState(false);
 
   useEffect(() => {
     setRpcInput(customRpcUrl ?? '');
@@ -198,6 +200,44 @@ export function SettingsPanel() {
               </button>
             </div>
             {jupiterSaved && <p className="text-xs text-emerald-400 mt-2">Jupiter API key saved.</p>}
+          </div>
+
+          <div className="pt-4 border-t border-slate-700">
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Helius API Key <span className="text-slate-500 font-normal">(optional)</span>
+            </label>
+            <input
+              type="password"
+              value={heliusKey}
+              onChange={(e) => {
+                setHeliusKey(e.target.value);
+                setHeliusSaved(false);
+              }}
+              placeholder="Enter your Helius API key..."
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-slate-100"
+            />
+            <p className="text-xs text-slate-500 mt-1">
+              Enables smart priority fees for faster transaction landing. Free tier at{' '}
+              <a href="https://helius.dev" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+                helius.dev
+              </a>
+            </p>
+            <div className="mt-3">
+              <button
+                onClick={() => {
+                  if (heliusKey.trim()) {
+                    localStorage.setItem('helius_api_key', heliusKey.trim());
+                  } else {
+                    localStorage.removeItem('helius_api_key');
+                  }
+                  setHeliusSaved(true);
+                }}
+                className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-medium text-white"
+              >
+                Save API Key
+              </button>
+            </div>
+            {heliusSaved && <p className="text-xs text-emerald-400 mt-2">Helius API key saved.</p>}
           </div>
         </div>
       </div>

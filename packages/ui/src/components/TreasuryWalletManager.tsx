@@ -273,7 +273,7 @@ export function TreasuryWalletManager() {
         } catch {
           // Fallback: PumpFun
           try {
-            const pfConfig: DexConfig = { rpcUrl, slippageBps: 200 };
+            const pfConfig: DexConfig = { rpcUrl, slippageBps: 200, heliusApiKey: (localStorage.getItem('helius_api_key') || undefined) as string | undefined };
             const pfQuote = await dexGetQuote('pumpfun', token.mint, WSOL_MINT, parseInt(token.amountRaw), pfConfig);
             const pfResult = await dexExecuteSwap(pfQuote, signer, pfConfig);
             if (pfResult.success) {
@@ -548,7 +548,7 @@ export function TreasuryWalletManager() {
     } catch (jupiterErr) {
       // Jupiter failed — try PumpFun for pre-graduation tokens
       try {
-        const pfConfig: DexConfig = { rpcUrl, slippageBps: 200 };
+        const pfConfig: DexConfig = { rpcUrl, slippageBps: 200, heliusApiKey: (localStorage.getItem('helius_api_key') || undefined) as string | undefined };
         const pfQuote = await dexGetQuote('pumpfun', pendingSell.mint, WSOL_MINT, parseInt(pendingSell.amountRaw), pfConfig);
         const pfResult = await dexExecuteSwap(pfQuote, signer, pfConfig);
         if (pfResult.success) {
@@ -702,7 +702,7 @@ export function TreasuryWalletManager() {
           // Jupiter failed — try PumpFun for pre-graduation tokens
           try {
             setSellAllProgress(`Selling ${token.mint.slice(0, 6)}... via PumpFun from ${wallet.name || wallet.address.slice(0, 6)}`);
-            const pfConfig: DexConfig = { rpcUrl, slippageBps: 200 };
+            const pfConfig: DexConfig = { rpcUrl, slippageBps: 200, heliusApiKey: (localStorage.getItem('helius_api_key') || undefined) as string | undefined };
             const pfQuote = await dexGetQuote('pumpfun', token.mint, WSOL_MINT, parseInt(token.amountRaw), pfConfig);
             const pfResult = await dexExecuteSwap(pfQuote, signer, pfConfig);
             if (pfResult.success) {
