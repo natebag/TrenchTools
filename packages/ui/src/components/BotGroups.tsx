@@ -17,6 +17,9 @@ import {
   ExternalLink,
   ArrowDownRight,
   ArrowUpRight,
+  Pencil,
+  Check,
+  X,
 } from 'lucide-react'
 import { useSecureWallet } from '@/hooks/useSecureWallet'
 import { useNetwork } from '@/context/NetworkContext'
@@ -153,6 +156,8 @@ export function BotGroups() {
   // UI state
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [expandedBots, setExpandedBots] = useState<Record<string, boolean>>({})
+  const [editingBotId, setEditingBotId] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState<Partial<BotGroupConfig>>({})
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
   // Create modal state
@@ -1221,7 +1226,25 @@ export function BotGroups() {
                           Stop
                         </button>
                       )}
-                      {runtime.status === 'idle' && !orphaned && (
+                      {runtime.status === 'idle' && !orphaned && editingBotId !== config.id && (
+                        <button
+                          onClick={() => {
+                            setEditingBotId(config.id)
+                            setEditDraft({
+                              pattern: config.pattern,
+                              minSwapSol: config.minSwapSol,
+                              maxSwapSol: config.maxSwapSol,
+                              minIntervalMs: config.minIntervalMs,
+                              maxIntervalMs: config.maxIntervalMs,
+                              solPerWallet: config.solPerWallet,
+                            })
+                          }}
+                          className="p-1.5 text-slate-500 hover:text-blue-400 transition-colors"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                      )}
+                      {runtime.status === 'idle' && !orphaned && editingBotId !== config.id && (
                         <button
                           onClick={() => deleteBotConfig(config.id)}
                           className="p-1.5 text-slate-500 hover:text-red-400 transition-colors"
@@ -1229,31 +1252,127 @@ export function BotGroups() {
                           <Trash2 className="w-4 h-4" />
                         </button>
                       )}
+                      {editingBotId === config.id && (
+                        <>
+                          <button
+                            onClick={() => {
+                              const updated = configs.map(c => c.id === config.id ? { ...c, ...editDraft } : c) as BotGroupConfig[]
+                              setConfigs(updated)
+                              saveBotConfigs(updated)
+                              setEditingBotId(null)
+                              setFeedback({ type: 'success', message: `${config.name} updated` })
+                            }}
+                            className="flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-xs font-medium transition-colors"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            Save
+                          </button>
+                          <button
+                            onClick={() => setEditingBotId(null)}
+                            className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-medium transition-colors"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                            Cancel
+                          </button>
+                        </>
+                      )}
                       {(runtime.status === 'starting' || runtime.status === 'stopping') && (
                         <Loader2 className="w-5 h-5 text-yellow-400 animate-spin" />
                       )}
                     </div>
                   </div>
 
-                  {/* Config summary */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                    <div>
-                      <span className="text-slate-500">Token</span>
-                      <p className="text-white font-mono text-xs mt-0.5">{config.targetToken.slice(0, 8)}...{config.targetToken.slice(-4)}</p>
+                  {/* Config summary / edit mode */}
+                  {editingBotId === config.id ? (
+                    <div className="space-y-3 text-sm">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <span className="text-slate-500 text-xs">Token</span>
+                          <p className="text-white font-mono text-xs mt-0.5">{config.targetToken.slice(0, 8)}...{config.targetToken.slice(-4)}</p>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 text-xs">Wallets</span>
+                          <p className="text-white text-xs mt-0.5">{config.walletCount} (fixed after creation)</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-slate-500 text-xs block mb-1">SOL per Wallet</label>
+                          <input type="number" step="0.01" min="0.01"
+                            value={editDraft.solPerWallet ?? config.solPerWallet}
+                            onChange={e => setEditDraft(d => ({ ...d, solPerWallet: parseFloat(e.target.value) || 0.1 }))}
+                            className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-slate-500 text-xs block mb-1">Pattern</label>
+                          <select
+                            value={editDraft.pattern ?? config.pattern}
+                            onChange={e => setEditDraft(d => ({ ...d, pattern: e.target.value as BotGroupConfig['pattern'] }))}
+                            className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs"
+                          >
+                            <option value="organic">Organic</option>
+                            <option value="steady">Steady</option>
+                            <option value="burst">Burst</option>
+                            <option value="wave">Wave</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div>
+                          <label className="text-slate-500 text-xs block mb-1">Min Swap (SOL)</label>
+                          <input type="number" step="0.001" min="0.001"
+                            value={editDraft.minSwapSol ?? config.minSwapSol}
+                            onChange={e => setEditDraft(d => ({ ...d, minSwapSol: parseFloat(e.target.value) || 0.01 }))}
+                            className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-slate-500 text-xs block mb-1">Max Swap (SOL)</label>
+                          <input type="number" step="0.001" min="0.001"
+                            value={editDraft.maxSwapSol ?? config.maxSwapSol}
+                            onChange={e => setEditDraft(d => ({ ...d, maxSwapSol: parseFloat(e.target.value) || 0.1 }))}
+                            className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-slate-500 text-xs block mb-1">Min Interval (s)</label>
+                          <input type="number" step="1" min="5"
+                            value={(editDraft.minIntervalMs ?? config.minIntervalMs) / 1000}
+                            onChange={e => setEditDraft(d => ({ ...d, minIntervalMs: (parseInt(e.target.value) || 15) * 1000 }))}
+                            className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-slate-500 text-xs block mb-1">Max Interval (s)</label>
+                          <input type="number" step="1" min="5"
+                            value={(editDraft.maxIntervalMs ?? config.maxIntervalMs) / 1000}
+                            onChange={e => setEditDraft(d => ({ ...d, maxIntervalMs: (parseInt(e.target.value) || 60) * 1000 }))}
+                            className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-white text-xs"
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-slate-500">Wallets</span>
-                      <p className="text-white mt-0.5">{config.walletCount} × {config.solPerWallet} SOL</p>
+                  ) : (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                      <div>
+                        <span className="text-slate-500">Token</span>
+                        <p className="text-white font-mono text-xs mt-0.5">{config.targetToken.slice(0, 8)}...{config.targetToken.slice(-4)}</p>
+                      </div>
+                      <div>
+                        <span className="text-slate-500">Wallets</span>
+                        <p className="text-white mt-0.5">{config.walletCount} × {config.solPerWallet} SOL</p>
+                      </div>
+                      <div>
+                        <span className="text-slate-500">Pattern</span>
+                        <p className="text-white mt-0.5">{config.pattern.charAt(0).toUpperCase() + config.pattern.slice(1)}</p>
+                      </div>
+                      <div>
+                        <span className="text-slate-500">Swap / Interval</span>
+                        <p className="text-white mt-0.5">{config.minSwapSol}-{config.maxSwapSol} SOL / {(config.minIntervalMs / 1000)}s-{(config.maxIntervalMs / 1000)}s</p>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-slate-500">Pattern</span>
-                      <p className="text-white mt-0.5">{config.pattern.charAt(0).toUpperCase() + config.pattern.slice(1)}</p>
-                    </div>
-                    <div>
-                      <span className="text-slate-500">Swap / Interval</span>
-                      <p className="text-white mt-0.5">{config.minSwapSol}-{config.maxSwapSol} SOL / {(config.minIntervalMs / 1000)}s-{(config.maxIntervalMs / 1000)}s</p>
-                    </div>
-                  </div>
+                  )}
 
                   {/* Live stats when running */}
                   {runtime.status === 'running' && (
