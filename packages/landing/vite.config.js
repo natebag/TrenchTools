@@ -7,7 +7,7 @@ export default defineConfig({
         sourcemap: true,
     },
     preview: {
-        allowedHosts: ['trenchsniper-os-production.up.railway.app', '.railway.app'],
+        allowedHosts: ['trenchtools-production.up.railway.app', '.railway.app'],
         port: 3000,
         host: true,
     },
