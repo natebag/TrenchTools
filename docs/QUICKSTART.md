@@ -51,9 +51,10 @@ Open **http://localhost:3001**
 
 ## 6. Distribute to Sub-Wallets
 
-1. Click **Fund Sub-Wallets**
-2. SOL distributes evenly to all sub-wallets
-3. Each keeps 0.005 SOL for rent
+1. Select the sub-wallets you want to fund
+2. Set **SOL per wallet** amount (e.g., 0.5 SOL)
+3. Click **Fund Sub-Wallets**
+4. Each selected wallet receives the specified amount
 
 ## 7. Start market making
 
@@ -101,5 +102,6 @@ pnpm preview
 ## Need Help?
 
 - Full docs: [MAINNET_DEPLOYMENT.md](./MAINNET_DEPLOYMENT.md)
+- Activity Generator: [ACTIVITY_GENERATOR.md](./ACTIVITY_GENERATOR.md)
 - Architecture: [ARCHITECTURE.md](./ARCHITECTURE.md)
 - GitHub Issues: [natebag/TrenchTools](https://github.com/natebag/TrenchTools/issues)

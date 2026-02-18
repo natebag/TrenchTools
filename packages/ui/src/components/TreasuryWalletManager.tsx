@@ -143,6 +143,7 @@ export function TreasuryWalletManager() {
   const [historyTransactions, setHistoryTransactions] = useState<TransactionInfo[]>([]);
   const txHistoryCache = useRef<TxHistoryCache>({});
   const [isBulkFunding, setIsBulkFunding] = useState(false);
+  const [bulkFundAmount, setBulkFundAmount] = useState('0.5');
   const [isSweeping, setIsSweeping] = useState(false);
   const [sweepingWalletId, setSweepingWalletId] = useState<string | null>(null);
   const [walletHoldings, setWalletHoldings] = useState<WalletHoldingsByWallet>({});
@@ -1150,19 +1151,18 @@ export function TreasuryWalletManager() {
       return;
     }
 
-    const treasuryBalance = treasuryWallet.balance || 0;
-    // Leave some SOL in treasury for fees
-    const availableToDistribute = treasuryBalance - RENT_RESERVE;
-
-    if (availableToDistribute <= 0) {
-      setError('Insufficient treasury balance');
+    const amountPerWallet = parseFloat(bulkFundAmount) || 0;
+    if (amountPerWallet < 0.001) {
+      setError('Fund amount per wallet too small (min 0.001 SOL)');
       return;
     }
 
-    const amountPerWallet = availableToDistribute / targetWallets.length;
+    const totalNeeded = amountPerWallet * targetWallets.length;
+    const treasuryBalance = treasuryWallet.balance || 0;
+    const availableToDistribute = treasuryBalance - RENT_RESERVE;
 
-    if (amountPerWallet < 0.001) {
-      setError('Amount per wallet too small');
+    if (totalNeeded > availableToDistribute) {
+      setError(`Need ${totalNeeded.toFixed(4)} SOL but treasury only has ${availableToDistribute.toFixed(4)} available`);
       return;
     }
 
@@ -1211,7 +1211,7 @@ export function TreasuryWalletManager() {
     } finally {
       setIsBulkFunding(false);
     }
-  }, [treasuryWallet, subWallets, selectedWalletIds, getKeypairs, rpcUrl, refreshBalances, refreshAllWalletHoldings, showSuccess]);
+  }, [treasuryWallet, subWallets, selectedWalletIds, bulkFundAmount, getKeypairs, rpcUrl, refreshBalances, refreshAllWalletHoldings, showSuccess]);
 
   // Sweep selected (or all) sub-wallets back to treasury
   const handleBulkSweep = useCallback(async () => {
@@ -1667,6 +1667,21 @@ export function TreasuryWalletManager() {
           {subWallets.length > 0 && (
             <div className="mt-4 pt-4 border-t border-yellow-500/20">
               <p className="text-xs text-slate-400 mb-3">Bulk Operations ({subWallets.length} sub-wallets)</p>
+              {/* Fund amount per wallet */}
+              <div className="flex items-center gap-2 mb-3">
+                <label className="text-xs text-slate-400 whitespace-nowrap">SOL per wallet:</label>
+                <input
+                  type="number"
+                  value={bulkFundAmount}
+                  onChange={(e) => setBulkFundAmount(e.target.value)}
+                  min={0.001}
+                  step={0.1}
+                  className="w-28 px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-500"
+                />
+                <span className="text-xs text-slate-500">
+                  Total: {((parseFloat(bulkFundAmount) || 0) * (selectedWalletIds.length > 0 ? selectedWalletIds.length : subWallets.length)).toFixed(4)} SOL
+                </span>
+              </div>
               <div className="flex gap-2">
                 <button
                   onClick={handleBulkFund}
@@ -1725,8 +1740,8 @@ export function TreasuryWalletManager() {
               )}
               <p className="text-xs text-slate-500 mt-2">
                 {selectedWalletIds.length > 0
-                  ? `Targeting ${selectedWalletIds.length} selected wallet${selectedWalletIds.length === 1 ? '' : 's'} • Fund: ${((treasuryWallet.balance - RENT_RESERVE) / selectedWalletIds.length).toFixed(4)} SOL each`
-                  : `Targeting all ${subWallets.length} sub-wallets • Fund: ${((treasuryWallet.balance - RENT_RESERVE) / subWallets.length).toFixed(4)} SOL each`}
+                  ? `Targeting ${selectedWalletIds.length} selected wallet${selectedWalletIds.length === 1 ? '' : 's'} • Fund: ${bulkFundAmount} SOL each`
+                  : `Targeting all ${subWallets.length} sub-wallets • Fund: ${bulkFundAmount} SOL each`}
                 {' • '}Sweep: leaves {RENT_RESERVE} SOL rent reserve
               </p>
             </div>

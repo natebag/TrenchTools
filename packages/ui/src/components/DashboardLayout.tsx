@@ -46,7 +46,7 @@ const navItems = [
   { path: '/shield', label: 'Shield', icon: Shield, description: 'Security scanner' },
   { path: '/whales', label: 'Whales', icon: Fish, description: 'Whale alerts' },
   { path: '/pnl', label: 'P&L', icon: LineChart, description: 'Portfolio analytics' },
-  { path: '/activity', label: 'Activity', icon: Activity, description: 'Generate fake tx history' },
+  { path: '/activity', label: 'Activity', icon: Activity, description: 'Generate wallet tx history' },
   { path: '/market-making', label: 'Market Making', icon: Volume2, description: 'Volume & automated bots' },
   { path: '/detection', label: 'Detection', icon: Eye, description: 'Manipulation analysis' },
   { path: '/charts', label: 'Charts', icon: LineChart, description: 'Token price charts' },
@@ -413,6 +413,7 @@ function AppContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [currentPath, setCurrentPath] = useState(window.location.pathname)
   const [hasMountedMarketMaking, setHasMountedMarketMaking] = useState(window.location.pathname === '/market-making')
+  const [hasMountedActivity, setHasMountedActivity] = useState(window.location.pathname === '/activity')
 
   useEffect(() => {
     const handlePopState = () => {
@@ -420,6 +421,9 @@ function AppContent() {
       setCurrentPath(nextPath)
       if (nextPath === '/market-making') {
         setHasMountedMarketMaking(true)
+      }
+      if (nextPath === '/activity') {
+        setHasMountedActivity(true)
       }
     }
 
@@ -436,7 +440,7 @@ function AppContent() {
       case '/shield': return <ShieldScanner />
       case '/whales': return <WhaleAlerts />
       case '/pnl': return <PnLCharts />
-      case '/activity': return <ActivityGenerator />
+      case '/activity': return null // Always-mounted below
       case '/detection': return <DetectionDashboard />
       case '/charts': return <TokenChart />
       case '/settings': return <SettingsPanel />
@@ -458,7 +462,12 @@ function AppContent() {
                 <MarketMaking />
               </div>
             )}
-            {currentPath !== '/market-making' && <RouteContent path={currentPath} />}
+            {hasMountedActivity && (
+              <div className={currentPath === '/activity' ? '' : 'hidden'}>
+                <ActivityGenerator />
+              </div>
+            )}
+            {currentPath !== '/market-making' && currentPath !== '/activity' && <RouteContent path={currentPath} />}
           </div>
         </main>
       </div>

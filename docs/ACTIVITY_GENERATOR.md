@@ -1,6 +1,8 @@
-# Activity Generator
+# Activity Generator Guide
 
-The Activity Generator creates real on-chain Solana transaction history for your wallets — commonly called **wallet aging**. It builds a genuine footprint of swaps and transfers so wallets don't appear freshly created.
+The Activity Generator creates real on-chain Solana transaction history for your wallets. This is commonly called **wallet aging** — building a genuine footprint of swaps and transfers so wallets don't appear freshly created.
+
+---
 
 ## Why Age Wallets?
 
@@ -13,45 +15,52 @@ The Activity Generator creates real on-chain Solana transaction history for your
 
 Wallet aging helps your sub-wallets look like real traders before using them for sniping or market making.
 
-::: warning
-Activity generation uses real SOL for real transactions. Start with small amounts on low intensity to test.
-:::
+> **Note:** Activity generation uses real SOL for real transactions. Start with small amounts on low intensity to test.
+
+---
 
 ## How It Works
 
 The Activity Generator runs **parallel trade loops** — one per selected wallet. Each wallet independently:
 
-1. **Picks a random action** — token swap or SOL transfer
+1. **Picks a random action** — token swap or SOL transfer (based on enabled types)
 2. **Executes on-chain** — real Jupiter swaps or native SOL transfers
 3. **Waits a random interval** — based on intensity settings
 4. **Repeats** until the configured duration expires
 
 When generation stops (manually or on timer), all purchased tokens are **automatically sold back to SOL** via Jupiter.
 
+---
+
 ## Transaction Types
 
-### Token Swaps
+### Token Swaps (Jupiter)
 
 Swaps SOL to/from popular tokens via Jupiter aggregator. The generator naturally alternates between buying and selling:
 
 - **Buy:** Picks a random enabled token, swaps SOL → Token
-- **Sell:** If the wallet holds tokens from previous buys, 50% chance to sell back to SOL
+- **Sell:** If the wallet holds tokens from previous buys, 50% chance to sell one back to SOL
 
-This creates a realistic pattern of buying and selling different tokens over time.
+This creates a realistic pattern of buying and selling different tokens.
 
 ### SOL Transfers
 
-Sends SOL between your selected wallets using `SystemProgram.transfer`. Requires 2+ wallets selected. Creates transfer history that looks like normal wallet-to-wallet activity.
+Sends SOL between your selected wallets. Requires 2+ wallets selected. Creates transfer history that looks like normal wallet-to-wallet activity.
 
-### NFT Interactions / DeFi
+### NFT Interactions / DeFi (Coming Soon)
 
-These types are planned but not yet implemented. They appear in the UI with a **"Soon"** badge and cannot be enabled.
+These transaction types are planned but not yet implemented. They appear in the UI with a "Soon" badge and cannot be enabled.
+
+---
 
 ## Configuration
 
 ### Wallet Selection
 
-Select which sub-wallets participate. Only **sniper** and **treasury** type wallets are shown — burner wallets are filtered out.
+Select which sub-wallets participate in activity generation. Only **sniper** and **treasury** type wallets are shown (burner wallets are filtered out).
+
+- **Select All** — Enable all available wallets
+- **Individual toggle** — Pick specific wallets
 
 ### Duration
 
@@ -64,15 +73,17 @@ Select which sub-wallets participate. Only **sniper** and **treasury** type wall
 
 ### Intensity
 
-| Level | Trade Size | Interval | Description |
-|-------|-----------|----------|-------------|
+Controls trade frequency and size:
+
+| Intensity | Trade Size | Interval | Description |
+|-----------|-----------|----------|-------------|
 | **Low** | 0.001 – 0.01 SOL | 5 – 15 min | Subtle, low-cost activity |
 | **Medium** | 0.005 – 0.05 SOL | 1 – 5 min | Moderate activity |
 | **High** | 0.01 – 0.1 SOL | 15 – 60 sec | Aggressive activity |
 
 ### Target Tokens
 
-Choose which tokens the generator swaps with.
+Choose which tokens the generator swaps with:
 
 **Default tokens:** USDC, USDT, BONK, JUP, WIF, RAY
 
@@ -84,10 +95,14 @@ All token selections are saved to localStorage and persist across sessions.
 
 ### Advanced Settings
 
+Fine-tune the exact parameters:
+
 | Setting | Description |
 |---------|-------------|
 | **Min/Max Transaction Size** | SOL amount range per trade |
 | **Min/Max Interval** | Seconds between trades per wallet |
+
+---
 
 ## Running the Generator
 
@@ -111,7 +126,7 @@ While running:
 - **Progress bar** — Shows elapsed percentage of total duration
 - **Transaction log** — Real-time list of pending/success/failed transactions
 - **Stats** — Success count, failure count, total transactions
-- **Solscan links** — Click any successful transaction to view on-chain
+- **Solscan links** — Click any successful transaction to view on Solscan
 
 ### Stopping
 
@@ -124,9 +139,11 @@ Click **Stop Generation** to halt all wallet loops immediately. The generator th
 
 This sell-back also happens automatically when the timer expires.
 
-### Background Behavior
+### Background Tab Behavior
 
-The Activity Generator is **always-mounted** — navigating to other pages (Wallets, Sniper, etc.) does not interrupt it. If you switch browser tabs and come back, stale wallet loops are automatically restarted.
+The generator is **always-mounted** — navigating to other pages (Wallets, Sniper, etc.) does not interrupt it. If you switch browser tabs and come back, stale wallet loops are automatically restarted.
+
+---
 
 ## Cost Estimation
 
@@ -136,22 +153,28 @@ The UI shows an estimated cost before you start:
 - **Transfers:** Only tx fee (~0.000005 SOL) per trade
 - **Total estimate** = (avg cost per tx) × (estimated tx count)
 
-## Best Practices
+Actual costs may vary based on market conditions and slippage.
 
-- **Start with Low intensity** to verify everything works
-- Use **3–5 wallets** for a good balance of diversity and cost
+---
+
+## Tips
+
+- **Start with Low intensity** to verify everything works before running longer sessions
+- **Use 3–5 wallets** for a good balance of diversity and cost
 - **Mix swaps + transfers** for the most organic-looking history
-- Add **custom tokens** relevant to your niche
-- Generate activity **before** using wallets for sniping or market making
-- Check the log for repeated failures — usually means insufficient balance or RPC issues
+- **Add custom tokens** relevant to your niche (e.g., meme coins you plan to trade)
+- **Check the log** for repeated failures — usually means insufficient balance or RPC issues
+- **Don't run during high congestion** — transaction fees spike and failure rates increase
+
+---
 
 ## Troubleshooting
 
 | Problem | Solution |
 |---------|----------|
-| "Wallet Vault Locked" | Go to Wallets page, enter your password |
-| Start button disabled | Ensure wallets selected, at least one type enabled, vault unlocked |
-| High failure rate | Check wallet SOL balances, verify RPC in Settings |
-| Swaps failing | Set Jupiter API key in Settings |
-| Tokens not selling back | Check tx log for errors; may need more SOL for fees |
-| Progress stuck | Switch tabs and return — visibility handler restarts stale loops |
+| "Wallet Vault Locked" | Go to Wallets page, enter your password to unlock |
+| Start button disabled | Ensure wallets are selected, at least one type is enabled, and vault is unlocked |
+| High failure rate | Check wallet SOL balances, verify RPC endpoint in Settings |
+| Swaps failing | Ensure Jupiter API key is set in Settings (optional but recommended) |
+| Tokens not selling back | Check the transaction log for specific errors; may need more SOL for fees |
+| Progress stuck | Switch tabs and come back — the visibility resume handler will restart stale loops |

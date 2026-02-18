@@ -88,7 +88,7 @@ Or configure in-app via Settings page.
 2. **Create Vault** → Set a strong password
 3. **Generate Sub-Wallets** → Create 5-10 trading wallets
 4. **Fund Treasury** → Send SOL to Treasury address
-5. **Distribute** → Click "Fund Sub-Wallets" to spread SOL
+5. **Distribute** → Select wallets, set SOL amount per wallet, click "Fund Sub-Wallets"
 
 ### Step 4: Configure market making
 
