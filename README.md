@@ -69,17 +69,7 @@ While paid tools like Proxima charge hundreds per month for access, TrenchTools 
 | **Telegram Bot** | ✅ Basic commands |
 | **Portfolio Analytics** | 📋 Planned |
 
-## Quick Start
-
-```bash
-# Clone and install
-git clone https://github.com/natebag/TrenchSniper-OS.git
-cd TrenchSniper-OS
-pnpm install
-pnpm build
-```
-
-### Configuration
+## Quick Start\n\n`ash\n# Clone and install\ngit clone https://github.com/natebag/Trenchtools.git\ncd TrenchTools\npnpm install\npnpm build\n`\n\n### Run the App\n`ash\n# Start the web UI (opens at http://localhost:5173)\npnpm start\n\n# Or run in dev mode with hot reload\npnpm dev\n`\n\n### Configuration
 
 Copy the example config and edit with your settings:
 
