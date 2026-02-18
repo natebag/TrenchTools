@@ -1,4 +1,4 @@
-# TrenchSniper OS — Quick Start
+# TrenchTools — Quick Start
 
 Get up and running in 10 minutes.
 
@@ -16,8 +16,8 @@ Get up and running in 10 minutes.
 ## 1. Clone & Install
 
 ```bash
-git clone https://github.com/natebag/TrenchSniper-OS.git
-cd TrenchSniper-OS
+git clone https://github.com/natebag/TrenchTools.git
+cd TrenchTools
 pnpm install
 ```
 
@@ -55,9 +55,9 @@ Open **http://localhost:3001**
 2. SOL distributes evenly to all sub-wallets
 3. Each keeps 0.005 SOL for rent
 
-## 7. Start Volume Boosting
+## 7. Start market making
 
-1. Go to **Volume** page
+1. Go to **market making** page
 2. Paste your **Jupiter API Key**
 3. Toggle **Real Trades** ON
 4. Enter your **Token Mint Address**
@@ -102,4 +102,4 @@ pnpm preview
 
 - Full docs: [MAINNET_DEPLOYMENT.md](./MAINNET_DEPLOYMENT.md)
 - Architecture: [ARCHITECTURE.md](./ARCHITECTURE.md)
-- GitHub Issues: [natebag/TrenchSniper-OS](https://github.com/natebag/TrenchSniper-OS/issues)
+- GitHub Issues: [natebag/TrenchTools](https://github.com/natebag/TrenchTools/issues)

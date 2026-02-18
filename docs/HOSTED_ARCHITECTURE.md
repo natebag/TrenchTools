@@ -1,10 +1,10 @@
-# TrenchSniper Hosted Service Architecture
+# TrenchTools Hosted Service Architecture
 
 > Draft v0.1 - 2026-02-15
 
 ## Overview
 
-TrenchSniper is **open source** — anyone can self-host. The **hosted service** (website + Telegram bot) offers convenience for a small fee.
+TrenchTools is **open source** — anyone can self-host. The **hosted service** (website + Telegram bot) offers convenience for a small fee.
 
 ## Business Model
 
@@ -32,7 +32,7 @@ We **never** store or have access to user private keys. All signing happens clie
 │  💼 Sub-wallets (1-N)               │
 │     - Auto-generated for operations │
 │     - Funded from main wallet       │
-│     - Used for volume/sniping       │
+│     - Used for market making/sniping       │
 │     - Sweepable back to main        │
 └─────────────────────────────────────┘
 ```
@@ -77,7 +77,7 @@ await fetch('/api/swap/submit', { signedTx });
 
 ### First Time Setup (`/start`)
 ```
-🎯 Welcome to TrenchSniper!
+🎯 Welcome to TrenchTools!
 
 I've generated a fresh wallet for you:
 
@@ -117,7 +117,7 @@ Your wallet is ready. Deposit SOL to start sniping.
 /deposit - Show deposit address + QR
 /withdraw <amount> <address> - Withdraw SOL
 /snipe <token> <amount> - Snipe a token
-/volume - Configure volume boosting
+/market making - Configure market making
 /wallets - Manage sub-wallets
 /export - Show seed phrase (requires PIN)
 /help - Command list
@@ -166,9 +166,9 @@ POST /api/swap/quote             - Get swap quote (includes fee)
 POST /api/swap/prepare           - Prepare unsigned transaction
 POST /api/swap/submit            - Submit signed transaction
 
-POST /api/volume/config          - Save volume config
-POST /api/volume/start           - Start volume session
-POST /api/volume/stop            - Stop volume session
+POST /api/market making/config          - Save market making config
+POST /api/market making/start           - Start market making session
+POST /api/market making/stop            - Stop market making session
 
 GET  /api/snipe/opportunities    - List snipeable tokens
 POST /api/snipe/execute          - Execute snipe
@@ -208,15 +208,15 @@ CREATE TABLE sub_wallets (
 CREATE TABLE transactions (
   id TEXT PRIMARY KEY,
   user_id TEXT REFERENCES users(id),
-  type TEXT, -- 'snipe', 'volume_buy', 'volume_sell', 'withdraw'
+  type TEXT, -- 'snipe', 'market making_buy', 'market making_sell', 'withdraw'
   signature TEXT,
   amount_sol REAL,
   fee_collected REAL,
   created_at TIMESTAMP DEFAULT NOW()
 );
 
--- Volume sessions
-CREATE TABLE volume_sessions (
+-- market making sessions
+CREATE TABLE market making_sessions (
   id TEXT PRIMARY KEY,
   user_id TEXT REFERENCES users(id),
   target_token TEXT,
@@ -240,7 +240,7 @@ CREATE TABLE volume_sessions (
 
 ### Should Have
 - [ ] Audit logging for all transactions
-- [ ] Anomaly detection (unusual volume)
+- [ ] Anomaly detection (unusual market making)
 - [ ] User-configurable tx limits
 - [ ] 2FA for withdrawals (Telegram confirmation)
 
@@ -264,7 +264,7 @@ CREATE TABLE volume_sessions (
 
 ### Telegram Bot Setup
 1. Create bot via @BotFather
-2. Set webhook: `https://trenchsniper.io/api/telegram/webhook`
+2. Set webhook: `https://TrenchTools.io/api/telegram/webhook`
 3. Configure commands list
 4. Enable inline mode (optional)
 

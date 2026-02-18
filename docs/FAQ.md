@@ -10,7 +10,7 @@ Common questions about TrenchTools, organized by topic.
 
 TrenchTools is an open-source alternative to paid Solana trading tools like Proxima. It provides:
 - Token launching and sniping capabilities
-- Market making bots with volume patterns
+- Market making bots with Market making patterns
 - Manipulation detection analysis
 - Secure wallet management
 
@@ -169,9 +169,9 @@ Common causes and solutions:
 |-----------|----------|----------|
 | `buy` | Only purchases tokens | Accumulating |
 | `sell` | Only sells tokens | Distributing |
-| `both` | Alternates buy/sell | Volume generation |
+| `both` | Alternates buy/sell | market making generation |
 
-For volume boosting, use `both` to avoid accumulating positions.
+For market making, use `both` to avoid accumulating positions.
 
 ### How much SOL do I need per bot?
 
@@ -189,14 +189,14 @@ This covers:
 - Transaction fees
 - Slippage buffer
 
-### Bots stopped after reaching volume target
+### Bots stopped after reaching market making target
 
-This is expected behavior if you set `maxTotalVolumeSol` or `stopAfterSwaps`. To continue:
+This is expected behavior if you set `maxTotalmarket makingSol` or `stopAfterSwaps`. To continue:
 
 ```typescript
 // Reset limits and restart
 await orchestrator.updateBotConfig(botId, {
-  maxTotalVolumeSol: 200,  // Increase limit
+  maxTotalmarket makingSol: 200,  // Increase limit
 });
 await orchestrator.startBot(botId);
 ```
@@ -220,7 +220,7 @@ Common reasons:
 
 1. **Early stage** - New tokens naturally have irregular patterns
 2. **Few traders** - Low trader count amplifies patterns
-3. **Aggressive volume settings** - Your bots are too predictable
+3. **Aggressive market making settings** - Your bots are too predictable
 
 Solutions:
 - Use organic pattern with more randomization
@@ -331,16 +331,16 @@ Yes. On-chain activity is public. Mitigation:
 3. Monitor closely for first 24 hours
 4. Scale gradually
 
-### For Volume Boosting
+### For market making
 
 1. Use organic pattern
 2. 5-10 wallets minimum
-3. Keep daily volume realistic
+3. Keep daily market making realistic
 4. Monitor detection score
 
 ### For Long-Term Success
 
-1. Build real community alongside volume
+1. Build real community alongside market making
 2. Rotate strategies periodically
 3. Keep software updated
 4. Stay informed about network changes
@@ -352,7 +352,7 @@ Yes. On-chain activity is public. Mitigation:
 - [Getting Started](./GETTING_STARTED.md)
 - [Bot Configuration](./BOT_CONFIGURATION.md)
 - [Detection Guide](./DETECTION_GUIDE.md)
-- [Volume Patterns](./VOLUME_PATTERNS.md)
+- [Market making patterns](./market making_PATTERNS.md)
 
 ---
 

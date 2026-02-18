@@ -7,7 +7,7 @@ This guide explains how to configure and manage market making bots in TrenchTool
 Market making bots are automated trading programs that:
 
 - **Execute trades** at configurable intervals
-- **Generate volume** for your tokens
+- **Generate market making** for your tokens
 - **Maintain liquidity** on bonding curves and AMM pools
 - **Operate 24/7** without manual intervention
 
@@ -17,20 +17,20 @@ In TrenchTools, the **Orchestrator** manages multiple bots simultaneously, handl
 
 ## Bot Settings Explained
 
-### Volume Targets
+### market making Targets
 
-Control how much volume your bots generate:
+Control how much market making your bots generate:
 
 | Setting | Description | Example |
 |---------|-------------|---------|
-| `dailyTargetSol` | Target volume in SOL per day | 50 SOL |
-| `maxTotalVolumeSol` | Hard cap on total volume | 100 SOL |
+| `dailyTargetSol` | Target market making in SOL per day | 50 SOL |
+| `maxTotalmarket makingSol` | Hard cap on total market making | 100 SOL |
 | `stopAfterSwaps` | Automatically stop after N swaps | 1000 |
 
 ```yaml
 # Example configuration
 dailyTargetSol: 50
-maxTotalVolumeSol: 100
+maxTotalmarket makingSol: 100
 stopAfterSwaps: 1000
 ```
 
@@ -128,7 +128,7 @@ Improve transaction landing during congestion:
 ### Via Code
 
 ```typescript
-import { Orchestrator } from '@trenchsniper/core';
+import { Orchestrator } from '@trenchtools/core';
 
 const orchestrator = new Orchestrator(config);
 
@@ -194,11 +194,11 @@ await orchestrator.stopBot(botId);
 
 ### In the UI
 
-[Screenshot: Bot card showing success rate, volume, and last swap time]
+[Screenshot: Bot card showing success rate, market making, and last swap time]
 
 The Bot Manager displays real-time stats:
 - **Success Rate:** Percentage of successful swaps
-- **Volume:** Total SOL traded
+- **market making:** Total SOL traded
 - **Swaps:** Successful / Attempted
 - **Last Swap:** Time since last execution
 
@@ -209,7 +209,7 @@ The Bot Manager displays real-time stats:
 const stats = orchestrator.getBotStats(botId);
 
 console.log(`Success rate: ${(stats.swapsSuccessful / stats.swapsAttempted * 100).toFixed(1)}%`);
-console.log(`Total volume: ${stats.totalVolumeSol} SOL`);
+console.log(`Total market making: ${stats.totalmarket makingSol} SOL`);
 console.log(`Errors: ${stats.errors.length}`);
 
 // Get orchestrator-wide stats
@@ -333,7 +333,7 @@ Begin with low-intensity settings and scale up:
 
 Instead of one large bot, use several smaller ones:
 - Better failure isolation
-- More natural-looking volume
+- More natural-looking market making
 - Easier to manage and debug
 
 ### 3. Monitor Regularly
@@ -341,14 +341,14 @@ Instead of one large bot, use several smaller ones:
 Check bot health at least daily:
 - Review success rates
 - Check error logs
-- Verify volume targets
+- Verify market making targets
 
 ### 4. Set Hard Limits
 
 Always configure safety limits:
 ```typescript
 {
-  maxTotalVolumeSol: 100,  // Cap total volume
+  maxTotalmarket makingSol: 100,  // Cap total market making
   stopAfterSwaps: 1000,    // Auto-stop after N swaps
   maxSwapsPerHour: 60,     // Rate limiting
 }
@@ -358,7 +358,7 @@ Always configure safety limits:
 
 ## Related Documentation
 
-- **[Volume Patterns](./VOLUME_PATTERNS.md)** - Pattern strategies for volume boosting
+- **[Market making patterns](./market making_PATTERNS.md)** - Pattern strategies for market making
 - **[Detection Guide](./DETECTION_GUIDE.md)** - Avoid detection red flags
 - **[FAQ](./FAQ.md)** - Common questions
 

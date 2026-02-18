@@ -234,7 +234,7 @@ Now that you're set up, explore these guides:
 
 - **[Bot Configuration](./BOT_CONFIGURATION.md)** - Set up market making bots
 - **[Detection Guide](./DETECTION_GUIDE.md)** - Analyze tokens for manipulation
-- **[Volume Patterns](./VOLUME_PATTERNS.md)** - Understand volume boosting strategies
+- **[Market making patterns](./market making_PATTERNS.md)** - Understand market making strategies
 - **[FAQ](./FAQ.md)** - Common questions and troubleshooting
 
 ---

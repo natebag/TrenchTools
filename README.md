@@ -19,7 +19,7 @@ While paid tools like Proxima charge hundreds per month for access, TrenchTools 
 | [**Getting Started**](./docs/GETTING_STARTED.md) | Installation, setup, and first steps |
 | [**Bot Configuration**](./docs/BOT_CONFIGURATION.md) | Market making bot settings and management |
 | [**Detection Guide**](./docs/DETECTION_GUIDE.md) | Manipulation detection and analysis |
-| [**Volume Patterns**](./docs/VOLUME_PATTERNS.md) | Volume boosting strategies |
+| [**Market Making Patterns**](./docs/MARKET_MAKING_PATTERNS.md) | Market making strategies |
 | [**FAQ**](./docs/FAQ.md) | Common questions and troubleshooting |
 
 ---
@@ -40,7 +40,7 @@ While paid tools like Proxima charge hundreds per month for access, TrenchTools 
 | Feature | Description |
 |---------|-------------|
 | **Market Making Bots** | Automated trading with configurable intervals |
-| **Volume Patterns** | Organic, steady, burst, and wave patterns |
+| **Market Making Patterns** | Organic, steady, burst, and wave patterns |
 | **Multi-Bot Management** | Run 50+ bots concurrently |
 | **State Persistence** | WAL-based recovery and snapshots |
 | **RPC Load Balancing** | Multiple endpoints with health checks |
@@ -125,7 +125,7 @@ pnpm cli wallet --generate 5
 ### 🚀 Token Creation on PumpFun
 
 ```typescript
-import { createToken, TokenCreator } from '@trenchsniper/core';
+import { createToken, TokenCreator } from '@trenchtools/core';
 
 const result = await createToken(connection, {
   wallet,
@@ -145,7 +145,7 @@ console.log('Token created:', result.mint.toString());
 ### 🔄 Smart Router with Migration Detection
 
 ```typescript
-import { SmartRouter, router } from '@trenchsniper/core';
+import { SmartRouter, router } from '@trenchtools/core';
 
 // Auto-detect best DEX
 const bestDex = await router.getBestDex(connection, tokenMint);
@@ -168,7 +168,7 @@ const quote = await router.getBestQuote(connection, {
 ### 📊 Multi-DEX Trading
 
 ```typescript
-import { raydium, meteora } from '@trenchsniper/core';
+import { raydium, meteora } from '@trenchtools/core';
 
 // Raydium AMM swap
 const rayQuote = await raydium.getQuote(connection, params);
@@ -190,7 +190,7 @@ Pre-built strategies in `packages/cli/src/strategies/`:
 | Conservative | Low | 0.1 SOL | 1.5x | 30% |
 
 ```typescript
-import { loadStrategyByName } from '@trenchsniper/cli/strategies';
+import { loadStrategyByName } from '@trenchtools/cli/strategies';
 
 const strategy = loadStrategyByName('aggressive');
 console.log(strategy.autoSell.takeProfitMultiplier); // 2.0
@@ -199,7 +199,7 @@ console.log(strategy.autoSell.takeProfitMultiplier); // 2.0
 ## Architecture
 
 ```
-TrenchSniper-OS/
+TrenchTools/
 ├── packages/
 │   ├── core/              # Core trading modules
 │   │   └── src/
@@ -231,7 +231,7 @@ TrenchSniper-OS/
 │   ├── GETTING_STARTED.md
 │   ├── BOT_CONFIGURATION.md
 │   ├── DETECTION_GUIDE.md
-│   ├── VOLUME_PATTERNS.md
+│   ├── MARKET_MAKING_PATTERNS.md
 │   └── FAQ.md
 │
 └── trench.example.yaml   # Example configuration
@@ -239,7 +239,7 @@ TrenchSniper-OS/
 
 ## Packages
 
-### @trenchsniper/core
+### @trenchtools/core
 
 Core trading functionality:
 
@@ -260,14 +260,14 @@ import {
   
   // Smart Router
   router, SmartRouter,
-} from '@trenchsniper/core';
+} from '@trenchtools/core';
 ```
 
-### @trenchsniper/snipe
+### @trenchtools/snipe
 
 High-level sniping engine with multi-wallet coordination and Jito support.
 
-### @trenchsniper/cli
+### @trenchtools/cli
 
 Full CLI with strategy support.
 

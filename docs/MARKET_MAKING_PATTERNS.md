@@ -1,38 +1,38 @@
-# Volume Patterns Guide
+# Market making patterns Guide
 
-This guide explains volume boosting strategies and pattern types in TrenchSniper-OS.
+This guide explains market making strategies and pattern types in TrenchTools.
 
-## Why Volume Boosting?
+## Why market making?
 
-Volume is a key metric that traders use to evaluate tokens:
+market making is a key metric that traders use to evaluate tokens:
 
-| High Volume Signals | Low Volume Signals |
+| High market making Signals | Low market making Signals |
 |---------------------|-------------------|
 | Active interest | Low interest |
 | Healthy liquidity | Difficult to trade |
 | Established market | New/untested |
 | Visibility on trackers | Hidden from scanners |
 
-Volume boosting helps new tokens:
+market making helps new tokens:
 - **Gain visibility** on DEX screeners (DexScreener, Birdeye)
 - **Build credibility** with traders
 - **Improve price discovery** on bonding curves
 - **Attract organic traders** through social proof
 
-> ⚠️ **Disclaimer:** Volume boosting should complement real organic interest. Purely artificial volume without underlying value will eventually fail.
+> ⚠️ **Disclaimer:** market making should complement real organic interest. Purely artificial market making without underlying value will eventually fail.
 
 ---
 
 ## Pattern Types
 
-TrenchSniper-OS offers four volume patterns, each with distinct characteristics:
+TrenchTools offers four Market making patterns, each with distinct characteristics:
 
 ### 1. Organic Pattern
 
 **Best for:** Long-term credibility, avoiding detection
 
 ```
-Volume
+market making
   │     ╭─╮           ╭──╮
   │   ╭─╯ ╰─╮       ╭─╯  ╰─────╮
   │╭──╯     ╰───────╯          ╰─╮
@@ -64,10 +64,10 @@ Volume
 
 ### 2. Steady Pattern
 
-**Best for:** Consistent baseline volume, established tokens
+**Best for:** Consistent baseline market making, established tokens
 
 ```
-Volume
+market making
   │────────────────────────────────
   │════════════════════════════════
   │────────────────────────────────
@@ -78,7 +78,7 @@ Volume
 - Consistent trade frequency
 - Minimal timing variance (±20%)
 - Even distribution throughout day
-- Predictable, reliable volume
+- Predictable, reliable market making
 
 **Configuration:**
 ```typescript
@@ -92,7 +92,7 @@ Volume
 ```
 
 **Best Practices:**
-- Good for maintaining existing volume
+- Good for maintaining existing market making
 - Use fewer wallets (3-5)
 - Lower detection risk than aggressive patterns
 
@@ -101,7 +101,7 @@ Volume
 **Best for:** Announcements, launches, attention grabs
 
 ```
-Volume
+market making
   │                    ████
   │          ██        ████
   │    ██    ██   ██   ████  ██
@@ -111,7 +111,7 @@ Volume
 **Characteristics:**
 - Concentrated activity bursts
 - Quiet periods between bursts
-- High volume in short windows
+- High market making in short windows
 - Mimics news/event-driven trading
 
 **Configuration:**
@@ -120,7 +120,7 @@ Volume
   pattern: 'burst',
   burstDurationMs: 300000,     // 5 minute bursts
   burstIntervalMs: 1800000,    // Every 30 minutes
-  burstIntensity: 5,           // 5x normal volume
+  burstIntensity: 5,           // 5x normal market making
   minSwapSol: 0.1,
   maxSwapSol: 0.3,
 }
@@ -136,7 +136,7 @@ Volume
 **Best for:** Natural daily cycles, longer campaigns
 
 ```
-Volume
+market making
   │      ╭───╮              ╭───╮
   │    ╭─╯   ╰─╮          ╭─╯   ╰─╮
   │  ╭─╯       ╰─╮      ╭─╯       ╰─╮
@@ -146,7 +146,7 @@ Volume
 
 **Characteristics:**
 - Gradual increases and decreases
-- Sinusoidal volume curves
+- Sinusoidal market making curves
 - Mimics timezone activity patterns
 - Looks like global trader activity
 
@@ -175,7 +175,7 @@ Volume
 | Factor | Organic | Steady | Burst | Wave |
 |--------|---------|--------|-------|------|
 | **Detection Risk** | Low | Medium | High | Low |
-| **Volume Consistency** | Variable | High | Sporadic | Variable |
+| **market making Consistency** | Variable | High | Sporadic | Variable |
 | **Best Duration** | Weeks+ | Days-Weeks | Hours | Days |
 | **Wallet Count** | 5-10 | 3-5 | 10+ | 5-8 |
 | **SOL Required** | Medium | Low | High | Medium |
@@ -196,7 +196,7 @@ Volume
 You can run multiple patterns simultaneously for natural results:
 
 ```typescript
-// Example: Layer patterns for realistic volume
+// Example: Layer patterns for realistic market making
 const patterns = [
   { type: 'organic', wallets: 5, weight: 0.5 },   // 50% organic baseline
   { type: 'wave', wallets: 3, weight: 0.3 },      // 30% wave overlay
@@ -210,7 +210,7 @@ const patterns = [
 
 ### Detection Risks
 
-Volume boosting carries inherent risks. The detection module can identify these patterns:
+market making carries inherent risks. The detection module can identify these patterns:
 
 | Pattern | Detection Vulnerability | Mitigation |
 |---------|------------------------|------------|
@@ -256,7 +256,7 @@ const conservativeConfig = {
 ```
 
 **Expected Results:**
-- ~20 SOL daily volume
+- ~20 SOL daily market making
 - ~200-300 trades/day
 - Low detection probability
 - Minimal gas costs
@@ -277,7 +277,7 @@ const balancedConfig = {
 ```
 
 **Expected Results:**
-- ~50 SOL daily volume
+- ~50 SOL daily market making
 - ~500-800 trades/day
 - Moderate detection probability
 - ~0.5 SOL daily gas costs
@@ -298,7 +298,7 @@ const aggressiveConfig = {
 ```
 
 **Expected Results:**
-- ~200 SOL daily volume
+- ~200 SOL daily market making
 - ~2000+ trades/day
 - High detection probability
 - ~2 SOL daily gas costs
@@ -313,7 +313,7 @@ const aggressiveConfig = {
 
 ```typescript
 interface PatternMetrics {
-  volumeToday: number;        // SOL traded today
+  market makingToday: number;        // SOL traded today
   avgTradeSize: number;       // Average swap size
   intervalVariance: number;   // Higher = more random
   walletDistribution: number; // Even = 1.0
@@ -323,9 +323,9 @@ interface PatternMetrics {
 
 ### UI Monitoring
 
-[Screenshot: Volume Control panel showing pattern stats and detection score]
+[Screenshot: market making Control panel showing pattern stats and detection score]
 
-1. Navigate to **Volume Control**
+1. Navigate to **market making Control**
 2. Check the stats panel:
    - Current Rate (SOL/hour)
    - Success Rate (%)
@@ -363,7 +363,7 @@ orchestrator.resumeAllBots();
 - Diversify wallet funding sources
 - Monitor your detection score
 - Take breaks between campaigns
-- Build real community alongside volume
+- Build real community alongside market making
 
 ### Don't ❌
 
@@ -371,7 +371,7 @@ orchestrator.resumeAllBots();
 - Use the same wallet cluster repeatedly
 - Ignore rising detection scores
 - Neglect gas cost monitoring
-- Rely solely on artificial volume
+- Rely solely on artificial market making
 
 ---
 
@@ -383,4 +383,4 @@ orchestrator.resumeAllBots();
 
 ---
 
-*Volume patterns are tools for market making. Use responsibly.*
+*Market making patterns are tools for market making. Use responsibly.*

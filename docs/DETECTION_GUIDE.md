@@ -6,10 +6,10 @@ This guide explains how TrenchTools's detection module identifies market manipul
 
 The detection module analyzes on-chain trading data to identify suspicious patterns that may indicate:
 
-- **Wash trading** - Artificial volume between related wallets
+- **Wash trading** - Artificial market making between related wallets
 - **Bot activity** - Algorithmic trading with predictable patterns
 - **Coordinated manipulation** - Multiple wallets acting in concert
-- **Volume inflation** - Fake volume to attract retail traders
+- **market making inflation** - Fake market making to attract retail traders
 
 **Powered by Allium** - The detection engine uses Allium's blockchain data infrastructure for comprehensive on-chain analysis.
 
@@ -84,7 +84,7 @@ const weights = {
     "data": {
       "fundingSource": "7xKX...3nFd",
       "clusterSize": 5,
-      "totalVolume": 12.5
+      "totalmarket making": 12.5
     }
   }]
 }
@@ -92,7 +92,7 @@ const weights = {
 
 **Red Flags:**
 - 5+ wallets from same funding source
-- Clustered wallets contributing >50% of volume
+- Clustered wallets contributing >50% of market making
 - New wallets funded just before trading
 
 ### 2. Regular Intervals
@@ -255,7 +255,7 @@ When patterns are detected, alerts are generated with priority levels:
 ### Programmatic Analysis
 
 ```typescript
-import { Analyzer } from '@trenchsniper/core';
+import { Analyzer } from '@trenchtools/core';
 
 const analyzer = new Analyzer({
   allium: {
@@ -299,7 +299,7 @@ if (report.manipulationScore > 40) {
 Set up continuous monitoring:
 
 ```typescript
-import { Monitor } from '@trenchsniper/core';
+import { Monitor } from '@trenchtools/core';
 
 const monitor = new Monitor({
   tokenMint: 'TOKEN_MINT_ADDRESS',
@@ -371,7 +371,7 @@ monitor.start();
 
 ## Related Documentation
 
-- **[Volume Patterns](./VOLUME_PATTERNS.md)** - How to create organic-looking volume
+- **[Market making patterns](./market making_PATTERNS.md)** - How to create organic-looking market making
 - **[Bot Configuration](./BOT_CONFIGURATION.md)** - Avoid detection red flags
 - **[FAQ](./FAQ.md)** - Common questions
 

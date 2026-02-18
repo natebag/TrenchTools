@@ -1,6 +1,6 @@
-# TrenchSniper OS — Mainnet Deployment Guide
+# TrenchTools — Mainnet Deployment Guide
 
-Complete guide to deploying TrenchSniper OS for mainnet trading.
+Complete guide to deploying TrenchTools for mainnet trading.
 
 ---
 
@@ -11,13 +11,13 @@ Complete guide to deploying TrenchSniper OS for mainnet trading.
 - [ ] **RPC Provider** — Get a reliable paid RPC (free ones rate-limit hard)
   - [Helius](https://helius.dev) — Best for Solana, free tier decent
   - [QuickNode](https://quicknode.com) — Reliable, paid
-  - [Triton](https://triton.one) — Good for high-volume
+  - [Triton](https://triton.one) — Good for high-market making
   - Backup: `https://solana-rpc.publicnode.com` (CORS-friendly, free)
 
 - [ ] **Jupiter API Key** — Required for swaps
   - Go to [portal.jup.ag](https://portal.jup.ag)
   - Create account, generate API key
-  - Free tier: 600 requests/min (enough for moderate volume)
+  - Free tier: 600 requests/min (enough for moderate market making)
 
 - [ ] **Domain + Hosting**
   - Vercel (free tier works)
@@ -36,7 +36,7 @@ Complete guide to deploying TrenchSniper OS for mainnet trading.
 - [ ] **Initial Funding**
   - Treasury: Load with SOL for trading + gas
   - Recommended minimum: **1-5 SOL** for testing
-  - Production: depends on daily volume target
+  - Production: depends on daily market making target
 
 ### 3. Security Review
 
@@ -90,9 +90,9 @@ Or configure in-app via Settings page.
 4. **Fund Treasury** → Send SOL to Treasury address
 5. **Distribute** → Click "Fund Sub-Wallets" to spread SOL
 
-### Step 4: Configure Volume Boosting
+### Step 4: Configure market making
 
-1. Go to `/volume`
+1. Go to `/market making`
 2. Enter **Jupiter API Key**
 3. Toggle **Real Trades** ON
 4. Enter **Target Token Mint** address
@@ -105,7 +105,7 @@ Or configure in-app via Settings page.
 
 ## 💰 Funding Calculator
 
-| Daily Volume Target | Min Treasury | Wallets | Intensity |
+| Daily market making Target | Min Treasury | Wallets | Intensity |
 |---------------------|--------------|---------|-----------|
 | 10 SOL/day | 2 SOL | 5 | Low |
 | 50 SOL/day | 10 SOL | 10 | Medium |
@@ -146,7 +146,7 @@ While running, monitor:
 
 2. **External Tools**
    - [Solscan](https://solscan.io) — Watch wallet activity
-   - [DexScreener](https://dexscreener.com) — Watch volume impact
+   - [DexScreener](https://dexscreener.com) — Watch market making impact
    - [Birdeye](https://birdeye.so) — Token analytics
 
 3. **Alerts to Watch**
@@ -172,7 +172,7 @@ While running, monitor:
 - Refresh page and unlock vault again
 - Check password is correct
 
-### Volume not showing on DexScreener
+### market making not showing on DexScreener
 - Wait 5-10 minutes for indexing
 - Confirm transactions succeeded on Solscan
 - Check you're trading the right pair
@@ -191,7 +191,7 @@ While running, monitor:
 - 5-10 SOL budget
 - 10 wallets
 - Medium intensity
-- Track daily volume generated
+- Track daily market making generated
 
 ### Phase 3: Production
 - Scale based on Phase 2 results
@@ -221,14 +221,14 @@ While running, monitor:
 
 ## 📞 Support
 
-- **GitHub Issues:** [natebag/TrenchSniper-OS](https://github.com/natebag/TrenchSniper-OS/issues)
+- **GitHub Issues:** [natebag/TrenchTools](https://github.com/natebag/TrenchTools/issues)
 - **Discord:** (coming soon)
 
 ---
 
 ## ⚠️ Disclaimer
 
-This software is for educational purposes. Market making and volume generation may be subject to regulations in your jurisdiction. Use at your own risk. Never trade with funds you can't afford to lose.
+This software is for educational purposes. Market making and market making generation may be subject to regulations in your jurisdiction. Use at your own risk. Never trade with funds you can't afford to lose.
 
 ---
 
