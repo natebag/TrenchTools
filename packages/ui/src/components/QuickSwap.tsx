@@ -270,7 +270,7 @@ export function QuickSwap() {
         {/* API Key Warning */}
         {!jupiterApiKey && (
           <p className="text-xs text-yellow-400">
-            ⚠️ No Jupiter API key found. Add it in Volume Control settings.
+            ⚠️ No Jupiter API key found. Set it in Settings.
           </p>
         )}
       </div>

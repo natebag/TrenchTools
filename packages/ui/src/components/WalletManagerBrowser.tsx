@@ -24,6 +24,10 @@ import {
   Loader2,
   CheckCircle,
   Shield,
+  Pencil,
+  CheckSquare,
+  Square,
+  XCircle,
 } from 'lucide-react';
 import { useSecureWallet } from '@/hooks/useSecureWallet';
 import { useNetwork } from '@/context/NetworkContext';
@@ -42,6 +46,8 @@ export function WalletManagerBrowser() {
     generateWallets,
     importWallet,
     removeWallet,
+    removeWallets,
+    updateWallet,
     refreshBalances,
     exportBackup,
     importBackup,
@@ -51,13 +57,55 @@ export function WalletManagerBrowser() {
   // UI State
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  
+
+  // Selection state for bulk operations
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const selectAll = useCallback(() => {
+    setSelectedIds(new Set(wallets.map(w => w.id)));
+  }, [wallets]);
+
+  const deselectAll = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
+
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    const pwd = prompt('Enter password to delete selected wallets:');
+    if (!pwd) return;
+
+    try {
+      const count = await removeWallets(Array.from(selectedIds), pwd);
+      setSelectedIds(new Set());
+      setShowDeleteConfirm(false);
+      setSuccess(`Deleted ${count} wallet${count !== 1 ? 's' : ''}!`);
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      setError((err as Error).message);
+      setShowDeleteConfirm(false);
+    }
+  }, [selectedIds, removeWallets]);
+
   // Modal states
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [showUnlockModal, setShowUnlockModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showImportKeyModal, setShowImportKeyModal] = useState(false);
   const [showCreateVaultModal, setShowCreateVaultModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editWalletId, setEditWalletId] = useState('');
+  const [editName, setEditName] = useState('');
+  const [editType, setEditType] = useState<'sniper' | 'treasury' | 'burner'>('sniper');
   
   // Form states
   const [walletCount, setWalletCount] = useState(3);
@@ -146,7 +194,34 @@ export function WalletManagerBrowser() {
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [removeWallet]);
+    }, [removeWallet]);
+
+  // Edit wallet
+  const handleEditWallet = useCallback((walletId: string) => {
+    const wallet = wallets.find(w => w.id === walletId);
+    if (!wallet) return;
+
+    setEditWalletId(walletId);
+    setEditName(wallet.name || '');
+    setEditType(wallet.type || 'sniper');
+    setShowEditModal(true);
+  }, [wallets]);
+
+  const handleSaveEdit = useCallback(async () => {
+    const pwd = prompt('Enter password to save changes:');
+    if (!pwd) return;
+
+    try {
+      await updateWallet(editWalletId, { name: editName, type: editType }, pwd);
+      setSuccess('Wallet updated!');
+      setShowEditModal(false);
+      setEditWalletId('');
+      setEditName('');
+      setTimeout(() => setSuccess(null), 2000);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, [editWalletId, editName, editType, updateWallet]);
 
   // Export backup
   const handleExport = useCallback(async () => {
@@ -218,28 +293,34 @@ export function WalletManagerBrowser() {
   }, [clearError]);
 
   // Render wallet card
-  const renderWalletCard = (wallet: typeof wallets[0]) => (
+  const renderWalletCard = (wallet: typeof wallets[0]) => {
+    const isSelected = selectedIds.has(wallet.id);
+    return (
     <div
       key={wallet.id}
-      className="bg-gray-800/50 rounded-lg p-4 border border-gray-700 hover:border-gray-600 transition-colors"
+      className={`bg-gray-800/50 rounded-lg p-4 border transition-colors cursor-pointer ${
+        isSelected
+          ? 'border-purple-500/70 bg-purple-900/15'
+          : 'border-gray-700 hover:border-gray-600'
+      }`}
+      onClick={() => toggleSelect(wallet.id)}
     >
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${
-            wallet.type === 'treasury' ? 'bg-yellow-500' :
-            wallet.type === 'sniper' ? 'bg-green-500' : 'bg-blue-500'
-          }`} />
+          <button
+            onClick={(e) => { e.stopPropagation(); toggleSelect(wallet.id); }}
+            className="text-gray-400 hover:text-purple-400"
+          >
+            {isSelected ? <CheckSquare className="w-4 h-4 text-purple-400" /> : <Square className="w-4 h-4" />}
+          </button>
           <span className="font-medium">{wallet.name}</span>
-          <span className="text-xs px-2 py-0.5 rounded bg-gray-700 text-gray-300">
-            {wallet.type}
-          </span>
         </div>
-        <button
-          onClick={() => handleDeleteWallet(wallet.id)}
-          className="text-gray-400 hover:text-red-400 p-1"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button onClick={(e) => { e.stopPropagation(); handleEditWallet(wallet.id); }} className="text-gray-400 hover:text-blue-400 p-1" title="Edit"><Pencil className="w-4 h-4" /></button>
+          <button onClick={(e) => { e.stopPropagation(); handleDeleteWallet(wallet.id); }} className="text-gray-400 hover:text-red-400 p-1" title="Delete">
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       <div className="space-y-2">
@@ -249,7 +330,7 @@ export function WalletManagerBrowser() {
             {wallet.address}
           </code>
           <button
-            onClick={() => copyToClipboard(wallet.address, 'Address')}
+            onClick={(e) => { e.stopPropagation(); copyToClipboard(wallet.address, 'Address'); }}
             className="text-gray-400 hover:text-white p-1"
           >
             <Copy className="w-4 h-4" />
@@ -270,7 +351,7 @@ export function WalletManagerBrowser() {
         </div>
       </div>
     </div>
-  );
+  );};
 
   return (
     <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
@@ -396,6 +477,34 @@ export function WalletManagerBrowser() {
             <Unlock className="w-5 h-5" />
             Unlock Vault
           </button>
+        </div>
+      )}
+
+      {/* Bulk Actions Bar */}
+      {!isLocked && wallets.length > 0 && (
+        <div className="flex items-center justify-between mb-4 px-1">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={selectedIds.size === wallets.length ? deselectAll : selectAll}
+              className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              {selectedIds.size === wallets.length
+                ? <><CheckSquare className="w-4 h-4 text-purple-400" />Deselect All</>
+                : <><Square className="w-4 h-4" />Select All</>}
+            </button>
+            {selectedIds.size > 0 && (
+              <span className="text-sm text-purple-400">{selectedIds.size} selected</span>
+            )}
+          </div>
+          {selectedIds.size > 0 && (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/40 border border-red-500/30 hover:border-red-500/50 rounded-lg text-red-400 text-sm transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete Selected ({selectedIds.size})
+            </button>
+          )}
         </div>
       )}
 
@@ -718,8 +827,103 @@ export function WalletManagerBrowser() {
           </div>
         </div>
       )}
+
+{/* Edit Wallet Modal */}
+{showEditModal && (
+  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-gray-800">
+      <h3 className="text-lg font-bold mb-4">Edit Wallet</h3>
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm text-gray-400 mb-1">Name</label>
+          <input
+            type="text"
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:border-blue-500 focus:outline-none"
+            placeholder="Wallet name"
+          />
+        </div>
+        <div>
+          <label className="block text-sm text-gray-400 mb-1">Type</label>
+          <select
+            value={editType}
+            onChange={(e) => setEditType(e.target.value as 'sniper' | 'treasury' | 'burner')}
+            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:border-blue-500 focus:outline-none"
+          >
+            <option value="sniper">Sniper</option>
+            <option value="treasury">Treasury</option>
+            <option value="burner">Burner</option>
+          </select>
+        </div>
+      </div>
+      <div className="flex gap-3 mt-6">
+        <button
+          onClick={() => { setShowEditModal(false); setEditWalletId(''); setEditName(''); }}
+          className="flex-1 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleSaveEdit}
+          disabled={isLoading || !editName}
+          className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg disabled:opacity-50"
+        >
+          {isLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Save'}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* Bulk Delete Confirmation Modal */}
+{showDeleteConfirm && (
+  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <div className="bg-gray-900 rounded-xl p-6 w-full max-w-md border border-gray-800">
+      <div className="flex items-center gap-3 mb-4">
+        <XCircle className="w-6 h-6 text-red-400" />
+        <h3 className="text-lg font-bold">Delete {selectedIds.size} Wallet{selectedIds.size !== 1 ? 's' : ''}?</h3>
+      </div>
+
+      <p className="text-gray-400 text-sm mb-2">
+        This will permanently remove the following wallets from your vault:
+      </p>
+      <div className="max-h-40 overflow-y-auto mb-4 space-y-1">
+        {wallets.filter(w => selectedIds.has(w.id)).map(w => (
+          <div key={w.id} className="flex items-center gap-2 text-sm bg-gray-800/50 rounded px-3 py-1.5">
+            <span className="text-white">{w.name}</span>
+            <code className="text-xs text-gray-500 truncate">{w.address.slice(0, 8)}...{w.address.slice(-4)}</code>
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-red-900/20 border border-red-800/50 rounded-lg p-3 text-sm text-red-300 mb-4">
+        Make sure you have backed up any wallets with funds before deleting!
+      </div>
+
+      <div className="flex gap-3">
+        <button
+          onClick={() => setShowDeleteConfirm(false)}
+          className="flex-1 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleBulkDelete}
+          disabled={isLoading}
+          className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg disabled:opacity-50"
+        >
+          {isLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : `Delete ${selectedIds.size} Wallet${selectedIds.size !== 1 ? 's' : ''}`}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
     </div>
   );
 }
 
 export default WalletManagerBrowser;
+
+

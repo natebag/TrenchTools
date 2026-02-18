@@ -50,6 +50,9 @@ export interface TokenPosition {
   totalPnLSol: number;
   totalPnLPercent: number;
   
+  // Market data
+  marketCap?: number;      // FDV from DexScreener, in USD
+
   // Trade history
   trades: PositionTrade[];
   firstTradeTime: number;
@@ -173,12 +176,13 @@ function savePnLState(state: PnLState) {
 
 // ============ DexScreener Price Fetching ============
 
-async function fetchTokenPrices(tokenMints: string[]): Promise<Map<string, { 
-  priceUsd: number; 
-  priceSol: number; 
+async function fetchTokenPrices(tokenMints: string[]): Promise<Map<string, {
+  priceUsd: number;
+  priceSol: number;
   symbol?: string;
   name?: string;
   logo?: string;
+  marketCap?: number;
 }>> {
   const prices = new Map();
   
@@ -223,6 +227,7 @@ async function fetchTokenPrices(tokenMints: string[]): Promise<Map<string, {
           symbol: pair.baseToken?.symbol,
           name: pair.baseToken?.name,
           logo: pair.info?.imageUrl,
+          marketCap: pair.fdv || pair.marketCap || 0,
         });
       }
     } catch (e) {
@@ -252,9 +257,10 @@ export function PnLProvider({ children }: { children: ReactNode }) {
     const positions = new Map<string, TokenPosition>();
     const closedTrades: TradeResult[] = [];
     
-    // Sort trades by timestamp
+    // Only track sniper trades for PnL position cards
+    // Volume trades are wash trades and shouldn't create positions
     const sortedTrades = [...trades]
-      .filter(t => t.status === 'success')
+      .filter(t => t.status === 'success' && (t.source === 'sniper' || t.source === 'treasury'))
       .sort((a, b) => a.timestamp - b.timestamp);
     
     // Process each trade
@@ -409,6 +415,7 @@ export function PnLProvider({ children }: { children: ReactNode }) {
             if (priceData.symbol) position.tokenSymbol = priceData.symbol;
             if (priceData.name) position.tokenName = priceData.name;
             if (priceData.logo) position.tokenLogo = priceData.logo;
+            if (priceData.marketCap) position.marketCap = priceData.marketCap;
           }
           
           // Recalculate unrealized P&L

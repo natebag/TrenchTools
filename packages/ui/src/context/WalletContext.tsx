@@ -329,6 +329,25 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
+  // Sync from useSecureWallet via wallet-updated event (same-tab)
+  useEffect(() => {
+    const handleWalletUpdated = () => {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEYS.wallets);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (parsed.version !== STORAGE_VERSION || !Array.isArray(parsed.data)) return;
+        const validated = parsed.data.filter(validateWallet);
+        setWallets(validated);
+      } catch (error) {
+        console.error('Failed to sync from wallet-updated event:', error);
+      }
+    };
+
+    window.addEventListener('wallet-updated', handleWalletUpdated);
+    return () => window.removeEventListener('wallet-updated', handleWalletUpdated);
+  }, []);
+
   // Cleanup timers on unmount
   useEffect(() => {
     return () => {
