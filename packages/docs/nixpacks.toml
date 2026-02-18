@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["nodejs_20", "npm-10_x"]
+
+[phases.install]
+cmds = ["npm install"]
+
+[phases.build]
+cmds = ["npx vitepress build"]
+
+[start]
+cmd = "npx serve .vitepress/dist -l ${PORT:-3000}"
