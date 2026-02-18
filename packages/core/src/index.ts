@@ -1,5 +1,5 @@
 /**
- * @trenchsniper/core
+ * @trenchtools/core
  * Core functionality for TrenchSniper OS
  */
 
@@ -131,7 +131,7 @@ export type {
 export { logger } from './logger.js';
 
 // ============ Browser-Compatible Crypto ============
-// Import from '@trenchsniper/core/browser' for browser environments
+// Import from '@trenchtools/core/browser' for browser environments
 // These exports are here for convenience but may cause issues with bundlers
 // that don't tree-shake properly - prefer direct import from /browser
 export {

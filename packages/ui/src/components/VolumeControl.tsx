@@ -37,7 +37,7 @@ import {
   type PoolVenueDetection,
   type PumpSwapFeeProfile,
   type RunoutEstimateOutput,
-} from '@trenchsniper/core'
+} from '@trenchtools/core'
 
 // Types for Volume Boosting configuration
 interface VolumeConfig {

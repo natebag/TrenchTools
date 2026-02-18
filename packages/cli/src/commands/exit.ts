@@ -66,7 +66,7 @@ export async function exitCommand(
     // Check if token is on PumpFun or Raydium
     spinner.text = 'Checking token status...';
 
-    const { PumpFunClient } = await import('@trenchsniper/core/snipe');
+    const { PumpFunClient } = await import('@trenchtools/core/snipe');
     const client = new PumpFunClient(connection);
     
     const isOnPumpFun = await client.isOnPumpFun(tokenMint);

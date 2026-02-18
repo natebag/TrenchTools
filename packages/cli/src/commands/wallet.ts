@@ -6,7 +6,7 @@ import { Connection, Keypair, PublicKey, LAMPORTS_PER_SOL, SystemProgram, Transa
 import chalk from 'chalk';
 import ora from 'ora';
 import { TrenchConfig, loadKeypair } from '../config.js';
-import { generateWallets } from '@trenchsniper/core/wallet';
+import { generateWallets } from '@trenchtools/core/wallet';
 
 interface WalletOptions {
   generate?: string;

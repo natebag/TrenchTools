@@ -1,14 +1,14 @@
 # Frequently Asked Questions
 
-Common questions about TrenchSniper-OS, organized by topic.
+Common questions about TrenchTools, organized by topic.
 
 ---
 
 ## General Questions
 
-### What is TrenchSniper-OS?
+### What is TrenchTools?
 
-TrenchSniper-OS is an open-source alternative to paid Solana trading tools like Proxima. It provides:
+TrenchTools is an open-source alternative to paid Solana trading tools like Proxima. It provides:
 - Token launching and sniping capabilities
 - Market making bots with volume patterns
 - Manipulation detection analysis
@@ -16,9 +16,9 @@ TrenchSniper-OS is an open-source alternative to paid Solana trading tools like 
 
 **Key difference:** It's completely free and open-source.
 
-### Is TrenchSniper-OS free?
+### Is TrenchTools free?
 
-Yes! TrenchSniper-OS is MIT licensed and free for everyone. No subscription fees, no hidden costs.
+Yes! TrenchTools is MIT licensed and free for everyone. No subscription fees, no hidden costs.
 
 You will still need to pay for:
 - RPC endpoint access (or use free endpoints with rate limits)
@@ -253,7 +253,7 @@ The token must have sufficient trading history (10+ transactions recommended).
 
 ## Security
 
-### Is TrenchSniper-OS safe to use?
+### Is TrenchTools safe to use?
 
 **Code security:**
 - Open-source, auditable code

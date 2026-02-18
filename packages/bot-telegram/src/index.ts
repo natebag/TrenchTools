@@ -1,5 +1,5 @@
 /**
- * @trenchsniper/bot-telegram
+ * @trenchtools/bot-telegram
  * Telegram Bot for TrenchSniper OS
  */
 export { TrenchBot, createBot } from './bot.js';

@@ -1,7 +1,7 @@
 /**
  * Browser-Compatible Exports for TrenchSniper Core
  * 
- * Import from '@trenchsniper/core/browser' in Vite/browser environments
+ * Import from '@trenchtools/core/browser' in Vite/browser environments
  * to avoid Node-only dependencies like argon2
  */
 

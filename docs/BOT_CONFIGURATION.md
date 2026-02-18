@@ -1,6 +1,6 @@
 # Bot Configuration Guide
 
-This guide explains how to configure and manage market making bots in TrenchSniper-OS.
+This guide explains how to configure and manage market making bots in TrenchTools.
 
 ## What Are Market Making Bots?
 
@@ -11,7 +11,7 @@ Market making bots are automated trading programs that:
 - **Maintain liquidity** on bonding curves and AMM pools
 - **Operate 24/7** without manual intervention
 
-In TrenchSniper-OS, the **Orchestrator** manages multiple bots simultaneously, handling scheduling, state persistence, and RPC load balancing.
+In TrenchTools, the **Orchestrator** manages multiple bots simultaneously, handling scheduling, state persistence, and RPC load balancing.
 
 ---
 

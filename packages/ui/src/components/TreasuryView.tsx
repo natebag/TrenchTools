@@ -3,7 +3,7 @@
  * TrenchSniper OS
  * 
  * Wired to real:
- * - getTreasuryStatus() from @trenchsniper/core
+ * - getTreasuryStatus() from @trenchtools/core
  * - distributeFunds() for actual SOL transfers
  * - WebSocket subscriptions for live balance updates
  */
@@ -20,7 +20,7 @@ import {
   type TreasuryConfig,
   type DistributionResult,
   type BalanceSubscription,
-} from '@trenchsniper/core';
+} from '@trenchtools/core';
 import { useWallet } from '@/context/WalletContext';
 
 export function TreasuryView() {

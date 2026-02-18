@@ -1,7 +1,7 @@
 {
-  "name": "@trenchsniper/core",
+  "name": "@trenchtools/core",
   "version": "0.1.0",
-  "description": "Core wallet, encryption, connection management for TrenchSniper OS",
+  "description": "Core wallet, encryption, connection management for TrenchTools",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
