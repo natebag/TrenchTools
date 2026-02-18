@@ -8,8 +8,8 @@
  * - Real position tracking and auto-sell triggers
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { Connection } from '@solana/web3.js';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { Connection, PublicKey } from '@solana/web3.js';
 import {
   Target,
   Settings,
@@ -20,6 +20,10 @@ import {
   CheckCircle,
   XCircle,
   Clock,
+  TrendingUp,
+  TrendingDown,
+  Wallet as WalletIcon,
+  ArrowDownToLine,
 } from 'lucide-react';
 import {
   SniperGuardManager,
@@ -27,12 +31,35 @@ import {
 } from '@trenchtools/core';
 import { useWallet } from '@/context/WalletContext';
 import { useActiveTokens } from '@/context/ActiveTokensContext';
+import { useTxHistory } from '@/context/TxHistoryContext';
+import { usePnL } from '@/context/PnLContext';
+import { useSecureWallet } from '@/hooks/useSecureWallet';
+import { useNetwork } from '@/context/NetworkContext';
+import {
+  getQuote,
+  executeSwap as dexExecuteSwap,
+  KNOWN_MINTS,
+  type DexConfig,
+  type DexType,
+} from '@/lib/dex';
+import { getBondingCurveAddress } from '@/lib/dex/pumpfun';
 
 interface SniperStatus {
   active: boolean;
   positions: number;
   totalInvested: number;
   pendingTriggers: number;
+}
+
+const WSOL = KNOWN_MINTS.WSOL;
+const LAMPORTS_PER_SOL = 1_000_000_000;
+const SOL_RESERVE_LAMPORTS = 5_000_000; // keep SOL for fees/rent
+
+function formatMarketCap(mcap: number): string {
+  if (mcap >= 1_000_000_000) return `$${(mcap / 1_000_000_000).toFixed(2)}B`;
+  if (mcap >= 1_000_000) return `$${(mcap / 1_000_000).toFixed(2)}M`;
+  if (mcap >= 1_000) return `$${(mcap / 1_000).toFixed(1)}K`;
+  return `$${mcap.toFixed(0)}`;
 }
 
 export function SniperControl() {
@@ -43,11 +70,18 @@ export function SniperControl() {
     wallets,
     addActivity,
   } = useWallet();
-  
+
   const { addToken } = useActiveTokens();
+  const { addTrade, getTradesForToken } = useTxHistory();
+  const { openPositions, refreshPrices, refreshing } = usePnL();
+  const { rpcUrl } = useNetwork();
+  const { getKeypairs } = useSecureWallet({ rpcUrl });
 
   // Real sniper manager ref
   const managerRef = useRef<SniperGuardManager | null>(null);
+
+  // Wallet selection (same pattern as VolumeControl)
+  const [selectedWalletIds, setSelectedWalletIds] = useState<string[]>([]);
 
   // UI State
   const [isSniping, setIsSniping] = useState(false);
@@ -79,6 +113,9 @@ export function SniperControl() {
     result: 'success' | 'pending' | 'failed';
     timestamp: Date;
   }>>([]);
+
+  // Selling state: tracks which position (tokenMint) is currently being sold
+  const [sellingMint, setSellingMint] = useState<string | null>(null);
 
   // Initialize manager with real connection
   useEffect(() => {
@@ -160,65 +197,214 @@ export function SniperControl() {
     });
   }, [localConfig, updateSniperConfig, isSniping]);
 
-  // Start sniper with real config
+  // Start sniper — execute real buys via Jupiter for each selected wallet
   const handleStartSniper = useCallback(async () => {
     if (!localConfig.targetToken) {
       setError('Enter a target token address');
       return;
     }
 
-    // Check for sniper wallets
-    const sniperWallets = wallets.filter(w => w.type === 'sniper');
-    if (sniperWallets.length === 0) {
-      setError('No sniper wallets configured. Generate wallets first.');
+    // Validate token address
+    try {
+      new PublicKey(localConfig.targetToken);
+    } catch {
+      setError('Invalid token address');
       return;
     }
 
+    // Get signing keys
+    const allKeypairs = getKeypairs();
+    if (allKeypairs.length === 0) {
+      setError('Vault is locked. Unlock your wallet first.');
+      return;
+    }
+
+    // Resolve wallets to use
+    const activeWallets = selectedWalletIds.length > 0
+      ? wallets.filter(w => selectedWalletIds.includes(w.id))
+      : wallets;
+    if (activeWallets.length === 0) {
+      setError('No wallets available. Generate wallets first.');
+      return;
+    }
+
+    // Map addresses → keypairs
+    const keypairByAddress = new Map(
+      allKeypairs.map(kp => [kp.publicKey.toBase58(), kp] as const)
+    );
+
     setLoading(true);
     setError(null);
+    setIsSniping(true);
 
+    // Auto-detect DEX: check if token is on PumpFun bonding curve
+    let dexToUse: DexType = 'jupiter';
+    const connection = new Connection(rpcUrl, 'confirmed');
     try {
-      setIsSniping(true);
-      
-      // Update context with enabled state
-      updateSniperConfig({
-        enabled: true,
-        maxSlippage: localConfig.slippage,
-        autoSell: localConfig.autoSell,
-        takeProfit: localConfig.takeProfit,
-        stopLoss: localConfig.stopLoss,
-      });
-
-      addActivity({
-        type: 'scan',
-        description: `Sniper activated targeting ${localConfig.targetToken.slice(0, 8)}...`,
-      });
-
-      // Add token to active tokens for Detection Dashboard
-      addToken({
-        mint: localConfig.targetToken,
-        source: 'snipe'
-      });
-
-      setRecentActivity(prev => [{
-        id: Date.now().toString(),
-        action: 'Sniper started',
-        token: localConfig.targetToken.slice(0, 8),
-        result: 'success' as const,
-        timestamp: new Date(),
-      }, ...prev].slice(0, 10));
-
-      // In production, this would connect to websocket for token launches
-      // and trigger real buy transactions
-
-    } catch (err) {
-      console.error('Failed to start sniper:', err);
-      setError(err instanceof Error ? err.message : 'Failed to start sniper');
-      setIsSniping(false);
-    } finally {
-      setLoading(false);
+      const bondingCurve = getBondingCurveAddress(new PublicKey(localConfig.targetToken));
+      const accountInfo = await connection.getAccountInfo(bondingCurve);
+      if (accountInfo && accountInfo.data && accountInfo.data.length >= 49) {
+        const complete = (accountInfo.data as Buffer).readUInt8(48) === 1;
+        if (!complete) dexToUse = 'pumpfun';
+      }
+    } catch {
+      // Default to Jupiter if detection fails
     }
-  }, [localConfig, wallets, updateSniperConfig, addActivity]);
+
+    // Check Jupiter API key only if using Jupiter
+    const jupiterApiKey = localStorage.getItem('jupiter_api_key') || '';
+    if (dexToUse === 'jupiter' && !jupiterApiKey) {
+      setError('Jupiter API key required. Set it in Settings.');
+      setLoading(false);
+      setIsSniping(false);
+      return;
+    }
+
+    // Update context
+    updateSniperConfig({
+      enabled: true,
+      maxSlippage: localConfig.slippage,
+      autoSell: localConfig.autoSell,
+      takeProfit: localConfig.takeProfit,
+      stopLoss: localConfig.stopLoss,
+    });
+
+    addActivity({
+      type: 'scan',
+      description: `Sniper activated targeting ${localConfig.targetToken.slice(0, 8)}... via ${dexToUse === 'pumpfun' ? 'PumpFun' : 'Jupiter'}`,
+    });
+
+    addToken({ mint: localConfig.targetToken, source: 'snipe' });
+
+    setRecentActivity(prev => [{
+      id: Date.now().toString(),
+      action: `Sniper started (${dexToUse === 'pumpfun' ? 'PumpFun' : 'Jupiter'})`,
+      token: localConfig.targetToken.slice(0, 8),
+      result: 'success' as const,
+      timestamp: new Date(),
+    }, ...prev].slice(0, 10));
+
+    const dexConfig: DexConfig = {
+      rpcUrl,
+      apiKey: dexToUse === 'jupiter' ? jupiterApiKey : undefined,
+      slippageBps: Math.round(localConfig.slippage * 100),
+    };
+    const buyLamports = Math.max(1, Math.floor(localConfig.amount * LAMPORTS_PER_SOL));
+
+    let successCount = 0;
+    let failCount = 0;
+
+    // Execute buy for each wallet sequentially
+    for (const wallet of activeWallets) {
+      const signer = keypairByAddress.get(wallet.address);
+      if (!signer) {
+        setRecentActivity(prev => [{
+          id: Date.now().toString(),
+          action: `No signer for ${wallet.name || wallet.address.slice(0, 6)}`,
+          token: localConfig.targetToken.slice(0, 8),
+          result: 'failed' as const,
+          timestamp: new Date(),
+        }, ...prev].slice(0, 20));
+        failCount++;
+        continue;
+      }
+
+      try {
+        // Check wallet has enough SOL
+        const solBalance = await connection.getBalance(new PublicKey(wallet.address), 'confirmed');
+        const spendable = solBalance - SOL_RESERVE_LAMPORTS;
+        if (spendable < buyLamports) {
+          const balSol = (solBalance / LAMPORTS_PER_SOL).toFixed(4);
+          setRecentActivity(prev => [{
+            id: Date.now().toString(),
+            action: `${wallet.name || wallet.address.slice(0, 6)}: insufficient SOL (${balSol})`,
+            token: localConfig.targetToken.slice(0, 8),
+            result: 'failed' as const,
+            timestamp: new Date(),
+          }, ...prev].slice(0, 20));
+          failCount++;
+          continue;
+        }
+
+        // Get quote: SOL → target token
+        const quote = await getQuote(
+          dexToUse,
+          WSOL,
+          localConfig.targetToken,
+          buyLamports,
+          dexConfig
+        );
+
+        // Execute swap
+        const result = await dexExecuteSwap(quote, signer, dexConfig);
+        if (!result.success) {
+          throw new Error(result.error || 'Swap failed');
+        }
+
+        successCount++;
+        addActivity({
+          type: 'buy',
+          description: `Bought via ${wallet.name || wallet.address.slice(0, 6)} (${dexToUse === 'pumpfun' ? 'PumpFun' : 'Jupiter'})`,
+          txHash: result.txHash,
+          amount: localConfig.amount,
+          token: localConfig.targetToken,
+        });
+
+        // Record to TxHistory so PnL system picks it up
+        addTrade({
+          timestamp: Date.now(),
+          type: 'buy',
+          tokenMint: localConfig.targetToken,
+          amount: localConfig.amount,
+          wallet: wallet.address,
+          txHash: result.txHash,
+          status: 'success',
+          source: 'sniper',
+        });
+
+        setRecentActivity(prev => [{
+          id: result.txHash || Date.now().toString(),
+          action: `Buy success: ${wallet.name || wallet.address.slice(0, 6)}`,
+          token: localConfig.targetToken.slice(0, 8),
+          result: 'success' as const,
+          timestamp: new Date(),
+        }, ...prev].slice(0, 20));
+
+      } catch (err) {
+        console.error(`Sniper buy failed for ${wallet.address}:`, err);
+        failCount++;
+        setRecentActivity(prev => [{
+          id: Date.now().toString(),
+          action: `Buy failed: ${wallet.name || wallet.address.slice(0, 6)} — ${err instanceof Error ? err.message : 'unknown error'}`,
+          token: localConfig.targetToken.slice(0, 8),
+          result: 'failed' as const,
+          timestamp: new Date(),
+        }, ...prev].slice(0, 20));
+      }
+    }
+
+    // Summary
+    addActivity({
+      type: 'scan',
+      description: `Sniper complete: ${successCount} buys, ${failCount} failed`,
+    });
+
+    setRecentActivity(prev => [{
+      id: Date.now().toString(),
+      action: `Done: ${successCount} success, ${failCount} failed`,
+      token: localConfig.targetToken.slice(0, 8),
+      result: successCount > 0 ? 'success' as const : 'failed' as const,
+      timestamp: new Date(),
+    }, ...prev].slice(0, 20));
+
+    // Trigger PnL price refresh after buys complete
+    if (successCount > 0) {
+      setTimeout(() => refreshPrices(), 2000);
+    }
+
+    setIsSniping(false);
+    setLoading(false);
+  }, [localConfig, wallets, selectedWalletIds, getKeypairs, rpcUrl, updateSniperConfig, addActivity, addToken, addTrade, refreshPrices]);
 
   // Stop sniper
   const handleStopSniper = useCallback(async () => {
@@ -274,6 +460,208 @@ export function SniperControl() {
     }
   }, [positions, addActivity, updateStatus]);
 
+  // Sell a position — sells from all wallets that bought this token
+  const handleSellPosition = useCallback(async (tokenMint: string, tokenSymbol?: string) => {
+    const label = tokenSymbol || tokenMint.slice(0, 8);
+
+    // Get signing keys
+    const allKeypairs = getKeypairs();
+    if (allKeypairs.length === 0) {
+      setError('Vault is locked. Unlock your wallet first.');
+      return;
+    }
+
+    const keypairByAddress = new Map(
+      allKeypairs.map(kp => [kp.publicKey.toBase58(), kp] as const)
+    );
+
+    // Find wallets that traded this token
+    const trades = getTradesForToken(tokenMint);
+    const walletAddresses = [...new Set(trades.map(t => t.wallet))];
+    if (walletAddresses.length === 0) {
+      setError(`No trade history found for ${label}`);
+      return;
+    }
+
+    setSellingMint(tokenMint);
+    setError(null);
+
+    // Auto-detect DEX
+    let dexToUse: DexType = 'jupiter';
+    const connection = new Connection(rpcUrl, 'confirmed');
+    try {
+      const bondingCurve = getBondingCurveAddress(new PublicKey(tokenMint));
+      const accountInfo = await connection.getAccountInfo(bondingCurve);
+      if (accountInfo && accountInfo.data && accountInfo.data.length >= 49) {
+        const complete = (accountInfo.data as Buffer).readUInt8(48) === 1;
+        if (!complete) dexToUse = 'pumpfun';
+      }
+    } catch { /* Default to Jupiter */ }
+
+    const jupiterApiKey = localStorage.getItem('jupiter_api_key') || '';
+    if (dexToUse === 'jupiter' && !jupiterApiKey) {
+      setError('Jupiter API key required for graduated tokens. Set it in Settings.');
+      setSellingMint(null);
+      return;
+    }
+
+    const dexConfig: DexConfig = {
+      rpcUrl,
+      apiKey: dexToUse === 'jupiter' ? jupiterApiKey : undefined,
+      slippageBps: Math.round(localConfig.slippage * 100),
+    };
+
+    setRecentActivity(prev => [{
+      id: Date.now().toString(),
+      action: `Selling ${label} from ${walletAddresses.length} wallet(s) via ${dexToUse === 'pumpfun' ? 'PumpFun' : 'Jupiter'}`,
+      token: tokenMint.slice(0, 8),
+      result: 'pending' as const,
+      timestamp: new Date(),
+    }, ...prev].slice(0, 20));
+
+    let successCount = 0;
+    let failCount = 0;
+    const WSOL_MINT = WSOL;
+
+    for (const addr of walletAddresses) {
+      const signer = keypairByAddress.get(addr);
+      if (!signer) {
+        failCount++;
+        continue;
+      }
+
+      try {
+        // Get on-chain token balance for this wallet
+        const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+          new PublicKey(addr),
+          { mint: new PublicKey(tokenMint) }
+        );
+        const tokenAccount = tokenAccounts.value[0];
+        if (!tokenAccount) {
+          // No token account = nothing to sell
+          continue;
+        }
+        const tokenBalance = tokenAccount.account.data.parsed?.info?.tokenAmount;
+        const rawAmount = parseInt(tokenBalance?.amount || '0');
+        if (rawAmount <= 0) continue;
+
+        // Get quote: token → SOL
+        let sold = false;
+
+        // Try primary DEX first
+        try {
+          const quote = await getQuote(dexToUse, tokenMint, WSOL_MINT, rawAmount, dexConfig);
+          const result = await dexExecuteSwap(quote, signer, dexConfig);
+          if (result.success) {
+            sold = true;
+            successCount++;
+            const solOut = (result.outputAmount || 0) / LAMPORTS_PER_SOL;
+            addTrade({
+              timestamp: Date.now(),
+              type: 'sell',
+              tokenMint,
+              amount: solOut,
+              wallet: addr,
+              txHash: result.txHash,
+              status: 'success',
+              source: 'sniper',
+            });
+            setRecentActivity(prev => [{
+              id: result.txHash || Date.now().toString(),
+              action: `Sold ${label}: ${addr.slice(0, 6)}... → ${solOut.toFixed(4)} SOL`,
+              token: tokenMint.slice(0, 8),
+              result: 'success' as const,
+              timestamp: new Date(),
+            }, ...prev].slice(0, 20));
+          } else {
+            throw new Error(result.error || 'Swap failed');
+          }
+        } catch (primaryErr) {
+          // Fallback: if we used Jupiter, try PumpFun and vice versa
+          const fallbackDex: DexType = dexToUse === 'jupiter' ? 'pumpfun' : 'jupiter';
+          if (fallbackDex === 'jupiter' && !jupiterApiKey) {
+            throw primaryErr; // Can't fallback to Jupiter without API key
+          }
+          try {
+            const fbConfig: DexConfig = { rpcUrl, apiKey: fallbackDex === 'jupiter' ? jupiterApiKey : undefined, slippageBps: dexConfig.slippageBps };
+            const quote = await getQuote(fallbackDex, tokenMint, WSOL_MINT, rawAmount, fbConfig);
+            const result = await dexExecuteSwap(quote, signer, fbConfig);
+            if (result.success) {
+              sold = true;
+              successCount++;
+              const solOut = (result.outputAmount || 0) / LAMPORTS_PER_SOL;
+              addTrade({
+                timestamp: Date.now(),
+                type: 'sell',
+                tokenMint,
+                amount: solOut,
+                wallet: addr,
+                txHash: result.txHash,
+                status: 'success',
+                source: 'sniper',
+              });
+              setRecentActivity(prev => [{
+                id: result.txHash || Date.now().toString(),
+                action: `Sold ${label}: ${addr.slice(0, 6)}... → ${solOut.toFixed(4)} SOL (${fallbackDex})`,
+                token: tokenMint.slice(0, 8),
+                result: 'success' as const,
+                timestamp: new Date(),
+              }, ...prev].slice(0, 20));
+            } else {
+              throw new Error(result.error || 'Fallback swap failed');
+            }
+          } catch {
+            throw primaryErr; // Report original error
+          }
+        }
+
+        if (!sold) {
+          failCount++;
+        }
+      } catch (err) {
+        failCount++;
+        setRecentActivity(prev => [{
+          id: Date.now().toString(),
+          action: `Sell failed: ${addr.slice(0, 6)}... — ${err instanceof Error ? err.message : 'unknown'}`,
+          token: tokenMint.slice(0, 8),
+          result: 'failed' as const,
+          timestamp: new Date(),
+        }, ...prev].slice(0, 20));
+      }
+    }
+
+    // Summary
+    setRecentActivity(prev => [{
+      id: Date.now().toString(),
+      action: `Sell ${label}: ${successCount} sold, ${failCount} failed`,
+      token: tokenMint.slice(0, 8),
+      result: successCount > 0 ? 'success' as const : 'failed' as const,
+      timestamp: new Date(),
+    }, ...prev].slice(0, 20));
+
+    addActivity({
+      type: 'sell',
+      description: `Sold ${label}: ${successCount} wallets, ${failCount} failed`,
+    });
+
+    if (successCount > 0) {
+      setTimeout(() => refreshPrices(), 2000);
+    }
+
+    setSellingMint(null);
+  }, [getKeypairs, getTradesForToken, rpcUrl, localConfig.slippage, addTrade, addActivity, refreshPrices]);
+
+  // Compute wallet counts for each open position from trade history
+  const positionWalletCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const pos of openPositions) {
+      const trades = getTradesForToken(pos.tokenMint);
+      const uniqueWallets = new Set(trades.map(t => t.wallet));
+      counts.set(pos.tokenMint, uniqueWallets.size);
+    }
+    return counts;
+  }, [openPositions, getTradesForToken]);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -317,9 +705,9 @@ export function SniperControl() {
           <div className="text-2xl font-bold text-amber-400">{status.pendingTriggers}</div>
         </div>
         <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-          <div className="text-sm text-gray-400">Sniper Wallets</div>
+          <div className="text-sm text-gray-400">Selected Wallets</div>
           <div className="text-2xl font-bold text-blue-400">
-            {wallets.filter(w => w.type === 'sniper').length}
+            {selectedWalletIds.length > 0 ? selectedWalletIds.length : wallets.length}
           </div>
         </div>
       </div>
@@ -406,6 +794,47 @@ export function SniperControl() {
             />
           </div>
         </div>
+
+        {/* Wallet Selection */}
+        {wallets.length > 0 && (
+          <div className="pt-4 mt-4 border-t border-gray-700">
+            <p className="text-sm font-medium text-gray-400 mb-3">Select wallets to use:</p>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {wallets.map((w, i) => {
+                const isSelected = selectedWalletIds.includes(w.id);
+                return (
+                  <label
+                    key={w.id || i}
+                    className={`flex items-center justify-between p-2.5 rounded-lg cursor-pointer transition-colors ${
+                      isSelected ? 'bg-emerald-500/20 border border-emerald-500/30' : 'bg-gray-900 border border-gray-700 hover:border-gray-600'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedWalletIds(prev => [...prev, w.id]);
+                          } else {
+                            setSelectedWalletIds(prev => prev.filter(id => id !== w.id));
+                          }
+                        }}
+                        disabled={isSniping}
+                        className="w-4 h-4 rounded border-gray-600 text-emerald-500 focus:ring-emerald-500 bg-gray-700"
+                      />
+                      <span className="text-sm text-white">{w.name || `Wallet ${i + 1}`}</span>
+                    </div>
+                    <span className="text-sm text-gray-400 font-mono">{(w.balance || 0).toFixed(4)} SOL</span>
+                  </label>
+                );
+              })}
+            </div>
+            {selectedWalletIds.length === 0 && (
+              <p className="text-xs text-yellow-400 mt-2">No wallets selected — will use all wallets</p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Auto-Sell Settings */}
@@ -486,47 +915,131 @@ export function SniperControl() {
         </div>
       </div>
 
-      {/* Active Positions */}
-      {positions.length > 0 && (
-        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
-          <h2 className="text-lg font-semibold text-white mb-4">
-            Active Positions ({positions.length})
-          </h2>
-          <div className="space-y-2">
-            {positions.map((position) => (
-              <div
-                key={position.id}
-                className="flex items-center justify-between py-3 border-b border-gray-700 last:border-0"
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`w-2 h-2 rounded-full ${
-                    position.status === 'open' 
-                      ? 'bg-emerald-500 animate-pulse' 
-                      : position.status === 'partial' 
-                        ? 'bg-amber-500' 
-                        : 'bg-gray-500'
-                  }`} />
-                  <div>
-                    <p className="text-white font-medium font-mono">
-                      {position.tokenMint.slice(0, 8)}...{position.tokenMint.slice(-4)}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      Entry: {position.entrySolAmount.toFixed(4)} SOL @ {position.entryPrice.toFixed(8)}
-                    </p>
+      {/* Position Cards (Axiom-style) */}
+      {openPositions.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              Active Positions ({openPositions.length})
+            </h2>
+            <button
+              onClick={() => refreshPrices()}
+              disabled={refreshing}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-gray-300 transition-colors disabled:opacity-50"
+            >
+              <Loader2 className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+              {refreshing ? 'Updating...' : 'Refresh'}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {openPositions.map((pos) => {
+              const isProfit = pos.unrealizedPnLSol >= 0;
+              const walletCount = positionWalletCounts.get(pos.tokenMint) || 0;
+
+              return (
+                <div
+                  key={pos.tokenMint}
+                  className={`bg-gray-800 rounded-xl p-5 border transition-all hover:scale-[1.01] ${
+                    isProfit
+                      ? 'border-emerald-500/30 hover:border-emerald-500/50'
+                      : 'border-red-500/30 hover:border-red-500/50'
+                  }`}
+                >
+                  {/* Header: Token identity + wallet count */}
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      {pos.tokenLogo ? (
+                        <img src={pos.tokenLogo} alt={pos.tokenSymbol} className="w-10 h-10 rounded-full" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
+                          <span className="text-sm font-bold text-white">
+                            {(pos.tokenSymbol || pos.tokenMint.slice(0, 2)).charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-white font-semibold text-lg">
+                          {pos.tokenSymbol || pos.tokenMint.slice(0, 8)}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {pos.tokenName || `${pos.tokenMint.slice(0, 6)}...${pos.tokenMint.slice(-4)}`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 bg-blue-500/15 px-2.5 py-1 rounded-full">
+                      <WalletIcon className="w-3.5 h-3.5 text-blue-400" />
+                      <span className="text-xs font-medium text-blue-400">
+                        {walletCount} wallet{walletCount !== 1 ? 's' : ''}
+                      </span>
+                    </div>
                   </div>
-                </div>
-                <div className="text-right">
-                  <p className={`font-mono font-medium ${
-                    position.peakMultiplier >= 1 ? 'text-emerald-400' : 'text-red-400'
+
+                  {/* Metrics grid */}
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <div className="bg-gray-900/60 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-1">Avg Entry</p>
+                      <p className="text-sm text-white font-mono">
+                        {pos.avgEntryPrice > 0 ? pos.avgEntryPrice.toExponential(2) : '--'} SOL
+                      </p>
+                    </div>
+                    <div className="bg-gray-900/60 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-1">Market Cap</p>
+                      <p className="text-sm text-white font-mono">
+                        {pos.marketCap ? formatMarketCap(pos.marketCap) : '--'}
+                      </p>
+                    </div>
+                    <div className="bg-gray-900/60 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-1">SOL Invested</p>
+                      <p className="text-sm text-white font-mono">{pos.totalSolSpent.toFixed(4)}</p>
+                    </div>
+                    <div className="bg-gray-900/60 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-1">Current Price</p>
+                      <p className="text-sm text-white font-mono">
+                        {pos.currentPriceUsd > 0 ? `$${pos.currentPriceUsd.toExponential(2)}` : '--'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* PnL footer */}
+                  <div className={`rounded-lg p-3 flex items-center justify-between ${
+                    isProfit ? 'bg-emerald-500/10' : 'bg-red-500/10'
                   }`}>
-                    {position.peakMultiplier.toFixed(2)}x
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {position.remainingTokens.toLocaleString()} tokens
-                  </p>
+                    <div className="flex items-center gap-2">
+                      {isProfit ? (
+                        <TrendingUp className="w-5 h-5 text-emerald-400" />
+                      ) : (
+                        <TrendingDown className="w-5 h-5 text-red-400" />
+                      )}
+                      <p className={`text-lg font-bold font-mono ${isProfit ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {isProfit ? '+' : ''}{pos.unrealizedPnLSol.toFixed(4)} SOL
+                      </p>
+                    </div>
+                    <div className={`px-3 py-1 rounded-full text-sm font-bold ${
+                      isProfit
+                        ? 'bg-emerald-500/20 text-emerald-400'
+                        : 'bg-red-500/20 text-red-400'
+                    }`}>
+                      {isProfit ? '+' : ''}{pos.unrealizedPnLPercent.toFixed(1)}%
+                    </div>
+                  </div>
+
+                  {/* Quick Sell Button */}
+                  <button
+                    onClick={() => handleSellPosition(pos.tokenMint, pos.tokenSymbol)}
+                    disabled={sellingMint !== null}
+                    className="w-full mt-3 py-2.5 rounded-lg font-semibold text-sm transition-all flex items-center justify-center gap-2 bg-red-500/15 hover:bg-red-500/30 border border-red-500/30 hover:border-red-500/50 text-red-400 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {sellingMint === pos.tokenMint ? (
+                      <><Loader2 className="w-4 h-4 animate-spin" />Selling...</>
+                    ) : (
+                      <><ArrowDownToLine className="w-4 h-4" />Sell All ({walletCount} wallet{walletCount !== 1 ? 's' : ''})</>
+                    )}
+                  </button>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

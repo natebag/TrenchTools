@@ -15,6 +15,8 @@ export function SettingsPanel() {
   const [rpcInput, setRpcInput] = useState(customRpcUrl ?? '');
   const [rpcError, setRpcError] = useState('');
   const [rpcSaved, setRpcSaved] = useState(false);
+  const [jupiterKey, setJupiterKey] = useState(() => localStorage.getItem('jupiter_api_key') || '');
+  const [jupiterSaved, setJupiterSaved] = useState(false);
 
   useEffect(() => {
     setRpcInput(customRpcUrl ?? '');
@@ -154,6 +156,48 @@ export function SettingsPanel() {
                 </span>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Jupiter API Key
+            </label>
+            <input
+              type="password"
+              value={jupiterKey}
+              onChange={(e) => {
+                setJupiterKey(e.target.value);
+                setJupiterSaved(false);
+              }}
+              placeholder="Enter your Jupiter API key..."
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-slate-100"
+            />
+            <p className="text-xs text-slate-500 mt-1">
+              Required for swaps. Get a free key at{' '}
+              <a href="https://portal.jup.ag" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+                portal.jup.ag
+              </a>
+            </p>
+            <div className="mt-3">
+              <button
+                onClick={() => {
+                  if (jupiterKey.trim()) {
+                    localStorage.setItem('jupiter_api_key', jupiterKey.trim());
+                  } else {
+                    localStorage.removeItem('jupiter_api_key');
+                  }
+                  setJupiterSaved(true);
+                }}
+                className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-medium text-white"
+              >
+                Save API Key
+              </button>
+            </div>
+            {jupiterSaved && <p className="text-xs text-emerald-400 mt-2">Jupiter API key saved.</p>}
           </div>
         </div>
       </div>

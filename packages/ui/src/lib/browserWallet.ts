@@ -1,6 +1,6 @@
 /**
  * Browser Wallet Manager for TrenchSniper UI
- * 
+ *
  * Handles wallet generation, encryption, and storage entirely in the browser
  * using Web Crypto API (no Node dependencies)
  */
@@ -36,16 +36,16 @@ export interface WalletManagerState {
 export class BrowserWalletManager {
   private vault: BrowserWalletVault;
   private keypairs: Map<string, Keypair> = new Map();
-  
+
   constructor(storageKey = 'trenchsniper_secure_wallets') {
     if (!isBrowserCryptoAvailable()) {
       throw new Error('Web Crypto API not available. Use HTTPS or localhost.');
     }
     this.vault = new BrowserWalletVault(storageKey);
   }
-  
+
   // ============ State ============
-  
+
   /**
    * Get current manager state
    */
@@ -56,16 +56,16 @@ export class BrowserWalletManager {
       walletCount: this.vault.getUnlockedWallets()?.length ?? 0,
     };
   }
-  
+
   // ============ Vault Operations ============
-  
+
   /**
    * Check if vault exists
    */
   hasVault(): boolean {
     return this.vault.hasWallets();
   }
-  
+
   /**
    * Check if vault is unlocked
    */
@@ -84,14 +84,14 @@ export class BrowserWalletManager {
     }
     return unlocked.map(w => this.dataToWallet(w));
   }
-  
+
   /**
    * Unlock vault with password
    */
   async unlock(password: string): Promise<Wallet[]> {
     try {
       const walletData = await this.vault.load(password);
-      
+
       // Reconstruct keypairs and wallet objects
       this.keypairs.clear();
       return walletData.map(w => this.dataToWallet(w));
@@ -102,7 +102,7 @@ export class BrowserWalletManager {
       throw error;
     }
   }
-  
+
   /**
    * Lock vault (clear keypairs from memory)
    */
@@ -110,7 +110,7 @@ export class BrowserWalletManager {
     this.vault.lock();
     this.keypairs.clear();
   }
-  
+
   /**
    * Delete vault entirely
    */
@@ -118,9 +118,9 @@ export class BrowserWalletManager {
     this.vault.delete();
     this.keypairs.clear();
   }
-  
+
   // ============ Wallet Operations ============
-  
+
   /**
    * Generate a new wallet
    */
@@ -131,7 +131,7 @@ export class BrowserWalletManager {
   ): Promise<Wallet> {
     // Generate keypair
     const keypair = Keypair.generate();
-    
+
     // Create wallet data
     const walletData: BrowserWalletData = {
       publicKey: keypair.publicKey.toBase58(),
@@ -140,7 +140,7 @@ export class BrowserWalletManager {
       name,
       type,
     };
-    
+
     // Load existing wallets or create new vault
     let existingWallets: BrowserWalletData[] = [];
     if (this.vault.hasWallets()) {
@@ -153,18 +153,18 @@ export class BrowserWalletManager {
         throw error;
       }
     }
-    
+
     // Add new wallet and save
     const allWallets = [...existingWallets, walletData];
     await this.vault.save(allWallets, password);
-    
+
     // Store keypair in memory
     const wallet = this.dataToWallet(walletData, type);
     this.keypairs.set(wallet.id, keypair);
-    
+
     return wallet;
   }
-  
+
   /**
    * Generate multiple wallets at once
    */
@@ -175,18 +175,18 @@ export class BrowserWalletManager {
     password: string
   ): Promise<Wallet[]> {
     const newWallets: BrowserWalletData[] = [];
-    
+
     for (let i = 0; i < count; i++) {
       const keypair = Keypair.generate();
       newWallets.push({
         publicKey: keypair.publicKey.toBase58(),
         secretKey: Array.from(keypair.secretKey),
         createdAt: Date.now(),
-        name: `${namePrefix} ${i + 1}`,
+        name: `${namePrefix}${namePrefix.endsWith('-') || namePrefix.endsWith(' ') ? '' : ' '}${i + 1}`,
         type,
       });
     }
-    
+
     // Load existing or start fresh
     let existingWallets: BrowserWalletData[] = [];
     if (this.vault.hasWallets()) {
@@ -199,11 +199,11 @@ export class BrowserWalletManager {
         throw error;
       }
     }
-    
+
     // Save all
     const allWallets = [...existingWallets, ...newWallets];
     await this.vault.save(allWallets, password);
-    
+
     // Convert and store keypairs
     return newWallets.map(w => {
       const wallet = this.dataToWallet(w, type);
@@ -212,7 +212,7 @@ export class BrowserWalletManager {
       return wallet;
     });
   }
-  
+
   /**
    * Import wallet from secret key
    */
@@ -223,34 +223,34 @@ export class BrowserWalletManager {
     password: string
   ): Promise<Wallet> {
     const keypair = Keypair.fromSecretKey(secretKey);
-    
+
     const walletData: BrowserWalletData = {
       publicKey: keypair.publicKey.toBase58(),
       secretKey: Array.from(keypair.secretKey),
       createdAt: Date.now(),
       name,
     };
-    
+
     // Load existing or start fresh
     let existingWallets: BrowserWalletData[] = [];
     if (this.vault.hasWallets()) {
       existingWallets = await this.vault.load(password);
     }
-    
+
     // Check for duplicate
     if (existingWallets.some(w => w.publicKey === walletData.publicKey)) {
       throw new Error('Wallet already exists');
     }
-    
+
     // Save
     await this.vault.save([...existingWallets, walletData], password);
-    
+
     const wallet = this.dataToWallet(walletData, type);
     this.keypairs.set(wallet.id, keypair);
-    
+
     return wallet;
   }
-  
+
   /**
    * Remove a wallet
    */
@@ -260,38 +260,92 @@ export class BrowserWalletManager {
       const id = `wallet_${w.publicKey.slice(0, 8)}`;
       return id !== walletId;
     });
-    
+
     if (filtered.length === wallets.length) {
       throw new Error('Wallet not found');
     }
-    
+
     await this.vault.save(filtered, password);
     this.keypairs.delete(walletId);
   }
-  
+
+  /**
+   * Remove multiple wallets at once (single decrypt/encrypt cycle)
+   */
+  async removeWallets(walletIds: string[], password: string): Promise<number> {
+    const wallets = await this.vault.load(password);
+    const idsToRemove = new Set(walletIds);
+    const filtered = wallets.filter(w => {
+      const id = `wallet_${w.publicKey.slice(0, 8)}`;
+      return !idsToRemove.has(id);
+    });
+
+    const removedCount = wallets.length - filtered.length;
+    if (removedCount === 0) {
+      throw new Error('No matching wallets found');
+    }
+
+    await this.vault.save(filtered, password);
+    for (const id of walletIds) {
+      this.keypairs.delete(id);
+    }
+
+    return removedCount;
+  }
+
+  /**
+   * Update wallet name and/or type
+   */
+  async updateWallet(
+    walletId: string,
+    updates: { name?: string; type?: 'sniper' | 'treasury' | 'burner' },
+    password: string
+  ): Promise<Wallet> {
+    const wallets = await this.vault.load(password);
+    const walletIndex = wallets.findIndex(w => {
+      const id = `wallet_${w.publicKey.slice(0, 8)}`;
+      return id === walletId;
+    });
+
+    if (walletIndex === -1) {
+      throw new Error('Wallet not found');
+    }
+
+    // Update the wallet data
+    if (updates.name !== undefined) {
+      wallets[walletIndex].name = updates.name;
+    }
+    if (updates.type !== undefined) {
+      wallets[walletIndex].type = updates.type;
+    }
+
+    await this.vault.save(wallets, password);
+    return this.dataToWallet(wallets[walletIndex]);
+  }
+
   /**
    * Get keypair for signing (must be unlocked)
    */
   getKeypair(walletId: string): Keypair | undefined {
     return this.keypairs.get(walletId);
   }
-  
+
   /**
    * Get all keypairs (must be unlocked)
    */
   getAllKeypairs(): Keypair[] {
     return Array.from(this.keypairs.values());
   }
-  
+
   // ============ Export/Import ============
-  
+
   /**
    * Export encrypted backup
    */
   async exportBackup(password: string): Promise<string> {
     return this.vault.export(password);
   }
-  
+
   /**
    * Import from encrypted backup
    */
@@ -300,16 +354,16 @@ export class BrowserWalletManager {
     this.keypairs.clear();
     return walletData.map(w => this.dataToWallet(w));
   }
-  
+
   /**
    * Change vault password
    */
   async changePassword(oldPassword: string, newPassword: string): Promise<void> {
     await this.vault.changePassword(oldPassword, newPassword);
   }
-  
+
   // ============ Helpers ============
-  
+
   /**
    * Convert BrowserWalletData to Wallet type used by UI
    */
@@ -323,7 +377,7 @@ export class BrowserWalletManager {
     const keypair = Keypair.fromSecretKey(new Uint8Array(data.secretKey));
     const id = `wallet_${data.publicKey.slice(0, 8)}`;
     this.keypairs.set(id, keypair);
-    
+
     return {
       id,
       address: data.publicKey,

@@ -12,7 +12,6 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  Key,
   ExternalLink,
   ChevronDown
 } from 'lucide-react'
@@ -30,6 +29,7 @@ import {
   type DexConfig 
 } from '@/lib/dex'
 import { Connection, PublicKey } from '@solana/web3.js'
+import { getBondingCurveAddress } from '@/lib/dex/pumpfun'
 import {
   detectTokenVenues,
   getPumpSwapCanonicalFeeProfile,
@@ -256,7 +256,7 @@ export function VolumeControl() {
   const [isRunning, setIsRunning] = useState(false)
   const [txLogs, setTxLogs] = useState<TransactionLog[]>([])
   const [startTime, setStartTime] = useState<number | null>(null)
-  const [jupiterApiKey, setJupiterApiKey] = useState(() => localStorage.getItem('jupiter_api_key') || '')
+  const [jupiterApiKey] = useState(() => localStorage.getItem('jupiter_api_key') || '')
   const [useRealTrades, setUseRealTrades] = useState(false)
   const [selectedWalletIds, setSelectedWalletIds] = useState<string[]>([])
   const [resumeTick, setResumeTick] = useState(0)
@@ -299,13 +299,6 @@ export function VolumeControl() {
     })
   }
   
-  // Save Jupiter API key to localStorage
-  useEffect(() => {
-    if (jupiterApiKey) {
-      localStorage.setItem('jupiter_api_key', jupiterApiKey);
-    }
-  }, [jupiterApiKey]);
-
   useEffect(() => {
     const targetToken = config.targetToken.trim();
     if (!targetToken) {
@@ -389,12 +382,6 @@ export function VolumeControl() {
       throw new Error('No wallets available. Unlock your vault first.');
     }
 
-    // Check if selected DEX is implemented
-    const swapper = getSwapper(config.selectedDex);
-    if (!swapper.isImplemented) {
-      throw new Error(`${swapper.name} is not yet implemented. Please use Jupiter.`);
-    }
-
     let targetMintPubkey: PublicKey;
     try {
       targetMintPubkey = new PublicKey(config.targetToken);
@@ -402,9 +389,32 @@ export function VolumeControl() {
       throw new Error('Invalid target token mint address');
     }
 
+    // Auto-detect DEX: check if token is on PumpFun bonding curve
+    let effectiveDex: DexType = config.selectedDex;
+    const connection0 = new Connection(rpcUrl, 'confirmed');
+    try {
+      const bondingCurve = getBondingCurveAddress(targetMintPubkey);
+      const accountInfo = await connection0.getAccountInfo(bondingCurve);
+      if (accountInfo && accountInfo.data && accountInfo.data.length >= 49) {
+        const complete = (accountInfo.data as Buffer).readUInt8(48) === 1;
+        if (!complete) effectiveDex = 'pumpfun';
+      }
+    } catch { /* Default to user-selected DEX */ }
+
+    // Check if selected DEX is implemented
+    const swapper = getSwapper(effectiveDex);
+    if (!swapper.isImplemented) {
+      throw new Error(`${swapper.name} is not yet implemented. Please use Jupiter.`);
+    }
+
+    // Jupiter API key only required for Jupiter
+    if (effectiveDex === 'jupiter' && !jupiterApiKey) {
+      throw new Error('Jupiter API key required for graduated tokens. Set it in Settings.');
+    }
+
     const dexConfig: DexConfig = {
       rpcUrl,
-      apiKey: jupiterApiKey || undefined,
+      apiKey: effectiveDex === 'jupiter' ? (jupiterApiKey || undefined) : undefined,
       slippageBps: 200, // 2% slippage
     };
 
@@ -536,7 +546,7 @@ export function VolumeControl() {
 
     const runPlan = async (plan: TradePlan) => {
       const quote = await getQuote(
-        config.selectedDex,
+        effectiveDex,
         plan.inputMint,
         plan.outputMint,
         plan.amountRaw,
@@ -600,8 +610,8 @@ export function VolumeControl() {
         alert('Please enter a target token mint address');
         return;
       }
-      if (useRealTrades && !jupiterApiKey) {
-        alert('Please enter your Jupiter API key for real trades');
+      if (useRealTrades && config.selectedDex === 'jupiter' && !jupiterApiKey) {
+        alert('Jupiter API key required when using Jupiter. Set it in Settings, or PumpFun tokens will auto-route.');
         return;
       }
       if (useRealTrades && isLocked) {
@@ -683,7 +693,8 @@ export function VolumeControl() {
           amount: executedAmountSol,
           wallet: result.wallet,
           txHash: result.txHash,
-          status: 'success'
+          status: 'success',
+          source: 'volume',
         });
 
         setStats(prev => ({
@@ -732,7 +743,8 @@ export function VolumeControl() {
         amount: parseFloat(amount.toFixed(4)),
         wallet: `Wallet ${walletNum} (sim)`,
         txHash: newTx.txHash,
-        status: 'success'
+        status: 'success',
+        source: 'volume',
       });
 
       setStats(prev => ({
@@ -971,28 +983,6 @@ export function VolumeControl() {
               </div>
             )}
           </div>
-
-          {/* API Key (only for real trades) */}
-          {useRealTrades && (
-            <div className="space-y-2">
-              <label className="text-sm text-slate-400 flex items-center gap-2">
-                <Key className="w-4 h-4" />
-                {config.selectedDex === 'jupiter' ? 'Jupiter API Key' : 'API Key (optional)'}
-              </label>
-              <input
-                type="password"
-                value={jupiterApiKey}
-                onChange={(e) => setJupiterApiKey(e.target.value)}
-                placeholder={config.selectedDex === 'jupiter' ? 'Enter your Jupiter API key...' : 'API key if required...'}
-                className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-orange-500"
-              />
-              {config.selectedDex === 'jupiter' && (
-                <p className="text-xs text-slate-500">
-                  Get a free key at <a href="https://portal.jup.ag" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">portal.jup.ag</a>
-                </p>
-              )}
-            </div>
-          )}
 
           {/* Wallet Status */}
           {useRealTrades && (

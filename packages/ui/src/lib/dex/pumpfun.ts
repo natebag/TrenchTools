@@ -1,31 +1,114 @@
 /**
- * PumpFun DEX implementation (STUB)
- * 
- * PumpFun uses a bonding curve mechanism for fair-launch memecoins.
- * Tokens start on the bonding curve and graduate to Raydium after hitting
- * the market cap threshold (~$69k).
- * 
- * TODO: Implement full PumpFun integration
- * - Use pump.fun API or direct program interaction
- * - Handle bonding curve math
- * - Only works for tokens still on the curve (not graduated)
- * 
- * Reference:
- * - https://pump.fun/
- * - Program ID: 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P
+ * PumpFun DEX implementation
+ *
+ * Uses on-chain bonding curve state for quotes and the PumpPortal API
+ * (https://pumpportal.fun/api/trade-local) for transaction building.
+ * This is the same pattern as Jupiter: API builds the transaction,
+ * we sign it locally and send via our own RPC.
+ *
+ * Bonding curve math (for quotes):
+ * - Buy: tokensOut = (virtualTokenReserves * solIn) / (virtualSolReserves + solIn)
+ * - Sell: solOut = (virtualSolReserves * tokenIn) / (virtualTokenReserves + tokenIn)
+ * - 1% fee on all trades
  */
 
+import {
+  Connection,
+  PublicKey,
+  VersionedTransaction,
+  LAMPORTS_PER_SOL,
+} from '@solana/web3.js';
 import type { Keypair } from '@solana/web3.js';
 import type { DexSwapper, Quote, SwapResult, DexConfig } from './types';
 
-// PumpFun program constants
-const PUMPFUN_PROGRAM_ID = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
-const PUMPFUN_FEE_RECIPIENT = 'CebN5WGQ4jvEPvsVU4EoHEpgzq1VV7AbicfhtW4xC9iM';
+// ============ Constants ============
+
+const PUMPFUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
+const PUMPPORTAL_API_URL = 'https://pumpportal.fun/api/trade-local';
+const WSOL = 'So11111111111111111111111111111111111111112';
+
+// ============ Bonding Curve (for quotes) ============
+
+export function getBondingCurveAddress(mint: PublicKey): PublicKey {
+  const [pda] = PublicKey.findProgramAddressSync(
+    [Buffer.from('bonding-curve'), mint.toBytes()],
+    PUMPFUN_PROGRAM_ID
+  );
+  return pda;
+}
+
+interface BondingCurveState {
+  virtualTokenReserves: bigint;
+  virtualSolReserves: bigint;
+  realTokenReserves: bigint;
+  realSolReserves: bigint;
+  tokenTotalSupply: bigint;
+  complete: boolean;
+}
+
+function parseBondingCurveState(data: Buffer): BondingCurveState | null {
+  if (data.length < 49) return null;
+  const offset = 8; // Skip Anchor discriminator
+  return {
+    virtualTokenReserves: data.readBigUInt64LE(offset),
+    virtualSolReserves: data.readBigUInt64LE(offset + 8),
+    realTokenReserves: data.readBigUInt64LE(offset + 16),
+    realSolReserves: data.readBigUInt64LE(offset + 24),
+    tokenTotalSupply: data.readBigUInt64LE(offset + 32),
+    complete: data.readUInt8(offset + 40) === 1,
+  };
+}
+
+async function fetchBondingCurveState(
+  connection: Connection,
+  bondingCurve: PublicKey
+): Promise<BondingCurveState | null> {
+  const accountInfo = await connection.getAccountInfo(bondingCurve);
+  if (!accountInfo || !accountInfo.data) return null;
+  return parseBondingCurveState(accountInfo.data as Buffer);
+}
+
+function calculateSwapOutput(
+  inputAmount: bigint,
+  isBuying: boolean,
+  state: BondingCurveState,
+  slippageBps: number
+): { outAmount: bigint; minOutAmount: bigint; priceImpact: number } {
+  // 1% fee
+  const inputAfterFee = inputAmount - (inputAmount * 100n / 10000n);
+
+  let outputAmount: bigint;
+  let priceImpact: number;
+
+  if (isBuying) {
+    const numerator = state.virtualTokenReserves * inputAfterFee;
+    const denominator = state.virtualSolReserves + inputAfterFee;
+    outputAmount = numerator / denominator;
+
+    const spotPrice = Number(state.virtualTokenReserves) / Number(state.virtualSolReserves);
+    const executionPrice = Number(outputAmount) / Number(inputAfterFee);
+    priceImpact = Math.abs((spotPrice - executionPrice) / spotPrice * 100);
+  } else {
+    const numerator = state.virtualSolReserves * inputAfterFee;
+    const denominator = state.virtualTokenReserves + inputAfterFee;
+    outputAmount = numerator / denominator;
+
+    const spotPrice = Number(state.virtualSolReserves) / Number(state.virtualTokenReserves);
+    const executionPrice = Number(outputAmount) / Number(inputAfterFee);
+    priceImpact = Math.abs((spotPrice - executionPrice) / spotPrice * 100);
+  }
+
+  const minOutputAmount = (outputAmount * BigInt(10000 - slippageBps)) / 10000n;
+
+  return { outAmount: outputAmount, minOutAmount: minOutputAmount, priceImpact };
+}
+
+// ============ DexSwapper Implementation ============
 
 export const pumpfunSwapper: DexSwapper = {
   name: 'PumpFun',
   type: 'pumpfun',
-  isImplemented: false,
+  isImplemented: true,
 
   async getQuote(
     inputMint: string,
@@ -33,41 +116,41 @@ export const pumpfunSwapper: DexSwapper = {
     amount: number,
     config: DexConfig
   ): Promise<Quote> {
-    // TODO: Implement PumpFun bonding curve quote
-    //
-    // Steps for real implementation:
-    // 1. Check if token is still on bonding curve (not graduated)
-    // 2. Fetch bonding curve state
-    //    - virtualSolReserves, virtualTokenReserves
-    //    - realSolReserves, realTokenReserves
-    // 3. Calculate output using bonding curve formula
-    //    - For buys: tokensOut = virtualTokenReserves - (virtualSolReserves * virtualTokenReserves) / (virtualSolReserves + solIn)
-    //    - For sells: solOut = virtualSolReserves - (virtualSolReserves * virtualTokenReserves) / (virtualTokenReserves + tokensIn)
-    // 4. Apply 1% fee
-    //
-    // API endpoint: https://frontend-api.pump.fun/coins/{mint}
-    
-    console.warn('[PumpFun] getQuote is a stub - returning mock quote');
-    console.log('[PumpFun] Program ID:', PUMPFUN_PROGRAM_ID);
-    console.log('[PumpFun] Fee Recipient:', PUMPFUN_FEE_RECIPIENT);
-    
+    const connection = new Connection(config.rpcUrl, 'confirmed');
+    const slippageBps = config.slippageBps ?? 500;
+
+    const isBuying = inputMint === WSOL;
+    const tokenMintStr = isBuying ? outputMint : inputMint;
+    const tokenMint = new PublicKey(tokenMintStr);
+
+    // Fetch bonding curve state for quote calculation
+    const bondingCurve = getBondingCurveAddress(tokenMint);
+    const curveState = await fetchBondingCurveState(connection, bondingCurve);
+
+    if (!curveState) {
+      throw new Error(`Token ${tokenMintStr.slice(0, 8)}... not found on PumpFun bonding curve`);
+    }
+
+    if (curveState.complete) {
+      throw new Error(`Token ${tokenMintStr.slice(0, 8)}... has graduated — use Jupiter instead`);
+    }
+
+    const result = calculateSwapOutput(BigInt(amount), isBuying, curveState, slippageBps);
+
     return {
       dex: 'pumpfun',
       inputMint,
       outputMint,
       inputAmount: amount,
-      outputAmount: Math.floor(amount * 0.98), // Mock 2% less (1% fee + slippage)
-      priceImpactPct: 0.3,
-      slippageBps: config.slippageBps ?? 200,
+      outputAmount: Number(result.outAmount),
+      priceImpactPct: result.priceImpact,
+      slippageBps,
       raw: {
-        stub: true,
-        message: 'PumpFun integration not yet implemented',
-        bondingCurve: {
-          // Mock bonding curve state
-          virtualSolReserves: 30_000_000_000, // 30 SOL in lamports
-          virtualTokenReserves: 1_000_000_000_000, // 1B tokens
-          complete: false,
-        },
+        tokenMint: tokenMintStr,
+        isBuying,
+        // For API: amount in SOL (for buys) or tokens (for sells)
+        solAmountLamports: isBuying ? amount : Number(result.outAmount),
+        tokenAmount: isBuying ? Number(result.outAmount) : amount,
       },
     };
   },
@@ -75,59 +158,94 @@ export const pumpfunSwapper: DexSwapper = {
   async executeSwap(
     quote: Quote,
     wallet: Keypair,
-    _config: DexConfig
+    config: DexConfig
   ): Promise<SwapResult> {
-    // TODO: Implement PumpFun swap execution
-    //
-    // Steps for real implementation:
-    // 1. Determine if buy or sell
-    // 2. Build transaction with PumpFun instructions:
-    //    - For buys: call "buy" instruction
-    //    - For sells: call "sell" instruction
-    // 3. Include associated token account creation if needed
-    // 4. Sign and send transaction
-    //
-    // Buy instruction accounts:
-    // - global (PDA)
-    // - feeRecipient (CebN5WGQ4jvEPvsVU4EoHEpgzq1VV7AbicfhtW4xC9iM)
-    // - mint
-    // - bondingCurve (PDA)
-    // - associatedBondingCurve
-    // - associatedUser
-    // - user
-    // - systemProgram
-    // - tokenProgram
-    // - rent
-    // - eventAuthority
-    // - program
-    
-    console.warn('[PumpFun] executeSwap is a stub - returning mock failure');
-    
     const walletAddress = wallet.publicKey.toBase58();
-    
-    return {
-      success: false,
-      error: 'PumpFun integration not yet implemented. Use Jupiter for graduated tokens.',
-      wallet: walletAddress.slice(0, 8) + '...',
-      inputAmount: quote.inputAmount,
-    };
+    const truncatedWallet = walletAddress.slice(0, 8) + '...';
+
+    try {
+      const connection = new Connection(config.rpcUrl, 'confirmed');
+      const raw = quote.raw as {
+        tokenMint: string;
+        isBuying: boolean;
+        solAmountLamports: number;
+        tokenAmount: number;
+      };
+
+      // Convert slippage from bps to percentage for PumpPortal API
+      const slippagePercent = (quote.slippageBps ?? 500) / 100;
+
+      // For buys: cap the SOL amount to leave room for rent + fees
+      let buyAmountSol = raw.solAmountLamports / LAMPORTS_PER_SOL;
+      if (raw.isBuying) {
+        const balance = await connection.getBalance(wallet.publicKey, 'confirmed');
+        const balanceSol = balance / LAMPORTS_PER_SOL;
+        // Reserve 0.01 SOL for rent-exempt minimum + tx fees + priority fee
+        const maxSpendable = balanceSol - 0.01;
+        if (maxSpendable <= 0) {
+          throw new Error(`Wallet has only ${balanceSol.toFixed(4)} SOL — need at least 0.01 SOL reserve for rent/fees`);
+        }
+        buyAmountSol = Math.min(buyAmountSol, maxSpendable);
+      }
+
+      // For sells: PumpPortal expects token amount in human-readable units,
+      // not raw smallest-denomination. PumpFun tokens always have 6 decimals.
+      const sellTokenAmount = raw.tokenAmount / 1_000_000;
+
+      // Use PumpPortal API to build the transaction (same pattern as Jupiter)
+      const response = await fetch(PUMPPORTAL_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          publicKey: walletAddress,
+          action: raw.isBuying ? 'buy' : 'sell',
+          mint: raw.tokenMint,
+          amount: raw.isBuying ? buyAmountSol : sellTokenAmount,
+          denominatedInSol: raw.isBuying ? 'true' : 'false',
+          slippage: slippagePercent,
+          priorityFee: 0.00001,
+          pool: 'pump',
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`PumpPortal API failed (${response.status}): ${errorText}`);
+      }
+
+      // Response is raw bytes of a VersionedTransaction
+      const txBytes = new Uint8Array(await response.arrayBuffer());
+      const tx = VersionedTransaction.deserialize(txBytes);
+
+      // Sign with wallet
+      tx.sign([wallet]);
+
+      // Send transaction
+      const signature = await connection.sendTransaction(tx, {
+        skipPreflight: false,
+        maxRetries: 3,
+      });
+
+      return {
+        success: true,
+        txHash: signature,
+        wallet: truncatedWallet,
+        inputAmount: quote.inputAmount,
+        outputAmount: quote.outputAmount,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown PumpFun error',
+        wallet: truncatedWallet,
+        inputAmount: quote.inputAmount,
+      };
+    }
   },
 
   async supportsTokenPair(inputMint: string, outputMint: string): Promise<boolean> {
-    // TODO: Check if token is on PumpFun bonding curve
-    // Would query https://frontend-api.pump.fun/coins/{mint} and check if not graduated
-    
-    // PumpFun only works with SOL <-> Token pairs
-    const WSOL = 'So11111111111111111111111111111111111111112';
     const hasSOL = inputMint === WSOL || outputMint === WSOL;
-    
-    if (!hasSOL) {
-      console.warn('[PumpFun] Only SOL/Token pairs supported');
-      return false;
-    }
-    
-    console.warn('[PumpFun] supportsTokenPair is a stub - returning true for SOL pairs');
-    return true;
+    return hasSOL;
   },
 };
 

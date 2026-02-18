@@ -122,7 +122,7 @@ export const DEX_INFO: Record<DexType, DexInfo> = {
     type: 'pumpfun',
     name: 'PumpFun',
     description: 'Bonding curve for memecoins',
-    isImplemented: false,
+    isImplemented: true,
     color: '#EC4899',  // pink
     website: 'https://pump.fun',
   },

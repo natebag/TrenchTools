@@ -27,9 +27,12 @@ import {
   Key,
   Eye,
   EyeOff,
+  Pencil,
 } from 'lucide-react';
 import { useSecureWallet } from '@/hooks/useSecureWallet';
 import { useNetwork } from '@/context/NetworkContext';
+import { useTxHistory } from '@/context/TxHistoryContext';
+import { getQuote as dexGetQuote, executeSwap as dexExecuteSwap, type DexConfig } from '@/lib/dex';
 import { Connection, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL, ParsedTransactionWithMeta, VersionedTransaction } from '@solana/web3.js';
 
 // Transaction history types
@@ -101,12 +104,15 @@ export function TreasuryWalletManager() {
     unlock,
     lock,
     generateWallet,
+    generateWallets,
     importWallet,
     removeWallet,
+    updateWallet,
     refreshBalances,
     clearError,
     getKeypairs,
   } = useSecureWallet({ rpcUrl });
+  const { addTrade } = useTxHistory();
 
   // UI State
   const [error, setError] = useState<string | null>(null);
@@ -119,8 +125,13 @@ export function TreasuryWalletManager() {
   const [fundTarget, setFundTarget] = useState<string | null>(null);
   const [fundAmount, setFundAmount] = useState('0.01');
   const [newWalletName, setNewWalletName] = useState('');
-  const [newWalletType, setNewWalletType] = useState<'sniper' | 'treasury' | 'burner'>('sniper');
+  const [newWalletCount, setNewWalletCount] = useState(1);
+  const newWalletType = 'sniper' as const;
   const [importKey, setImportKey] = useState('');
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editWalletId, setEditWalletId] = useState('');
+  const [editName, setEditName] = useState('');
+  const editType = 'sniper' as const;
   const [isFunding, setIsFunding] = useState(false);
   const [fundTxHash, setFundTxHash] = useState<string | null>(null);
   
@@ -142,11 +153,14 @@ export function TreasuryWalletManager() {
   const [sellTxHash, setSellTxHash] = useState<string | null>(null);
   const [pendingPrivateKeyExport, setPendingPrivateKeyExport] = useState<PendingPrivateKeyExportState | null>(null);
   const [isPrivateKeyVisible, setIsPrivateKeyVisible] = useState(false);
+  const [selectedWalletIds, setSelectedWalletIds] = useState<string[]>([]);
+  const [isSellingAll, setIsSellingAll] = useState(false);
+  const [sellAllProgress, setSellAllProgress] = useState('');
 
   const walletAddressKey = wallets.map(w => w.address).join('|');
 
-  // Get treasury wallet (first treasury type, or first wallet)
-  const treasuryWallet = wallets.find(w => w.type === 'treasury') || wallets[0];
+  // Main wallet is always the first one
+  const treasuryWallet = wallets[0];
   const subWallets = wallets.filter(w => w.id !== treasuryWallet?.id);
 
   const showSuccess = useCallback((message: string, txHash?: string) => {
@@ -241,7 +255,7 @@ export function TreasuryWalletManager() {
   ) => {
     const jupiterApiKey = localStorage.getItem('jupiter_api_key') || '';
     if (!jupiterApiKey) {
-      setError('Jupiter API key missing. Set it in /volume to enable token sells.');
+      setError('Jupiter API key missing. Set it in Settings to enable token sells.');
       return;
     }
 
@@ -287,7 +301,7 @@ export function TreasuryWalletManager() {
 
     const jupiterApiKey = localStorage.getItem('jupiter_api_key') || '';
     if (!jupiterApiKey) {
-      setError('Jupiter API key missing. Set it in /volume to enable token sells.');
+      setError('Jupiter API key missing. Set it in Settings to enable token sells.');
       setPendingSell(null);
       return;
     }
@@ -368,6 +382,150 @@ export function TreasuryWalletManager() {
     refreshBalances,
     showSuccess,
   ]);
+
+  // Sell all tokens from selected wallets back to SOL
+  const handleSellAllTokens = useCallback(async () => {
+    const targetIds = selectedWalletIds.length > 0 ? selectedWalletIds : subWallets.map(w => w.id);
+    const targetWallets = wallets.filter(w => targetIds.includes(w.id));
+    if (targetWallets.length === 0) return;
+
+    const jupiterApiKey = localStorage.getItem('jupiter_api_key') || '';
+
+    setIsSellingAll(true);
+    clearFeedback();
+
+    let totalSold = 0;
+    let totalFailed = 0;
+    const connection = new Connection(rpcUrl, 'confirmed');
+
+    for (const wallet of targetWallets) {
+      const signer = getWalletSigner(wallet.address);
+      if (!signer) {
+        totalFailed++;
+        continue;
+      }
+
+      // Fetch current holdings for this wallet
+      setSellAllProgress(`Scanning ${wallet.name || wallet.address.slice(0, 6)}...`);
+      let holdings: WalletTokenHolding[] = [];
+      try {
+        const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+          new PublicKey(wallet.address),
+          { programId: SPL_TOKEN_PROGRAM_ID }
+        );
+        holdings = tokenAccounts.value
+          .map((account) => {
+            const info = account.account.data.parsed.info;
+            const tokenAmount = info.tokenAmount;
+            return {
+              mint: info.mint as string,
+              amountRaw: tokenAmount.amount as string,
+              amountUi: tokenAmount.uiAmount ?? parseFloat(tokenAmount.uiAmountString || '0'),
+              decimals: tokenAmount.decimals as number,
+            };
+          })
+          .filter(h => BigInt(h.amountRaw) > 0n && h.mint !== WSOL_MINT);
+      } catch {
+        totalFailed++;
+        continue;
+      }
+
+      if (holdings.length === 0) continue;
+
+      // Sell each token — try Jupiter first, fall back to PumpFun for pre-graduation tokens
+      for (const token of holdings) {
+        setSellAllProgress(`Selling ${token.mint.slice(0, 6)}... from ${wallet.name || wallet.address.slice(0, 6)}`);
+        try {
+          // Try Jupiter first (works for graduated tokens)
+          const quoteUrl = `${JUPITER_API_URL}/quote?` + new URLSearchParams({
+            inputMint: token.mint,
+            outputMint: WSOL_MINT,
+            amount: token.amountRaw,
+            slippageBps: '200',
+          });
+
+          const quoteResponse = await fetch(quoteUrl, {
+            headers: jupiterApiKey ? { 'x-api-key': jupiterApiKey } : {},
+          });
+          if (!quoteResponse.ok) throw new Error('Jupiter quote failed');
+
+          const quote = await quoteResponse.json();
+
+          const swapResponse = await fetch(`${JUPITER_API_URL}/swap`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(jupiterApiKey ? { 'x-api-key': jupiterApiKey } : {}),
+            },
+            body: JSON.stringify({
+              quoteResponse: quote,
+              userPublicKey: signer.publicKey.toBase58(),
+              wrapAndUnwrapSol: true,
+              dynamicComputeUnitLimit: true,
+              prioritizationFeeLamports: 'auto',
+            }),
+          });
+          if (!swapResponse.ok) throw new Error('Jupiter swap failed');
+
+          const swapPayload = await swapResponse.json();
+          const transactionBuffer = Buffer.from(swapPayload.swapTransaction, 'base64');
+          const transaction = VersionedTransaction.deserialize(transactionBuffer);
+          transaction.sign([signer]);
+
+          const signature = await connection.sendTransaction(transaction, {
+            skipPreflight: false,
+            maxRetries: 3,
+          });
+          await connection.confirmTransaction(signature, 'confirmed');
+
+          totalSold++;
+          // Record sell so PnL position card clears
+          addTrade({
+            timestamp: Date.now(),
+            type: 'sell',
+            tokenMint: token.mint,
+            amount: token.amountUi,
+            wallet: wallet.address,
+            txHash: signature,
+            status: 'success',
+            source: 'treasury',
+          });
+        } catch (jupiterErr) {
+          // Jupiter failed — try PumpFun for pre-graduation tokens
+          try {
+            setSellAllProgress(`Selling ${token.mint.slice(0, 6)}... via PumpFun from ${wallet.name || wallet.address.slice(0, 6)}`);
+            const pfConfig: DexConfig = { rpcUrl, slippageBps: 200 };
+            const pfQuote = await dexGetQuote('pumpfun', token.mint, WSOL_MINT, parseInt(token.amountRaw), pfConfig);
+            const pfResult = await dexExecuteSwap(pfQuote, signer, pfConfig);
+            if (pfResult.success) {
+              totalSold++;
+              // Record sell so PnL position card clears
+              addTrade({
+                timestamp: Date.now(),
+                type: 'sell',
+                tokenMint: token.mint,
+                amount: token.amountUi,
+                wallet: wallet.address,
+                txHash: pfResult.txHash,
+                status: 'success',
+                source: 'treasury',
+              });
+            } else {
+              throw new Error(pfResult.error || 'PumpFun sell failed');
+            }
+          } catch (pfErr) {
+            console.error(`Sell failed for ${token.mint} in ${wallet.address}:`, jupiterErr, pfErr);
+            totalFailed++;
+          }
+        }
+      }
+    }
+
+    setSellAllProgress('');
+    showSuccess(`Sold ${totalSold} token${totalSold !== 1 ? 's' : ''} to SOL${totalFailed > 0 ? ` (${totalFailed} failed)` : ''}`);
+    setIsSellingAll(false);
+    await Promise.all([refreshAllWalletHoldings(), refreshBalances()]);
+  }, [selectedWalletIds, subWallets, wallets, rpcUrl, getWalletSigner, clearFeedback, showSuccess, refreshAllWalletHoldings, refreshBalances, addTrade]);
 
   const renderWalletTokenSection = useCallback((wallet: (typeof wallets)[number]) => {
     const tokens = walletHoldings[wallet.id] || [];
@@ -637,22 +795,68 @@ export function TreasuryWalletManager() {
       setError('Wallet name required');
       return;
     }
+    // Enforce 100 wallet max
+    const remaining = 100 - wallets.length;
+    if (remaining <= 0) {
+      setError('Maximum 100 wallets reached. Delete some wallets first.');
+      return;
+    }
+    const count = Math.min(newWalletCount, remaining);
     try {
       if (importKey) {
+        // Import always adds a single wallet
         const keyArray = JSON.parse(importKey);
         await importWallet(new Uint8Array(keyArray), newWalletName, newWalletType, password);
-      } else {
+        showSuccess('Sub-wallet imported!');
+      } else if (count === 1) {
         await generateWallet(newWalletName, newWalletType, password);
+        showSuccess('Sub-wallet added!');
+      } else {
+        // Bulk generate with suffix: "Name-1", "Name-2", etc.
+        await generateWallets(count, `${newWalletName}-`, newWalletType, password);
+        showSuccess(`Generated ${count} wallets!`);
       }
       setShowAddWalletModal(false);
       setNewWalletName('');
-      setNewWalletType('sniper');
+      setNewWalletCount(1);
       setImportKey('');
-      showSuccess('Sub-wallet added!');
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [newWalletName, newWalletType, importKey, password, generateWallet, importWallet, showSuccess]);
+  }, [newWalletName, newWalletCount, newWalletType, importKey, password, wallets.length, generateWallet, generateWallets, importWallet, showSuccess]);
+
+  // Edit wallet
+  const handleEditWallet = useCallback((walletId: string) => {
+    const wallet = wallets.find(w => w.id === walletId);
+    if (!wallet) return;
+    setEditWalletId(walletId);
+    setEditName(wallet.name || '');
+    setShowEditModal(true);
+  }, [wallets]);
+
+  const handleSaveEdit = useCallback(async () => {
+    if (!password) {
+      const pwd = prompt('Enter vault password:');
+      if (!pwd) return;
+      try {
+        await updateWallet(editWalletId, { name: editName, type: editType }, pwd);
+        showSuccess('Wallet updated!');
+        setShowEditModal(false);
+        setEditWalletId('');
+      } catch (err) {
+        setError((err as Error).message);
+      }
+      return;
+    }
+    try {
+      await updateWallet(editWalletId, { name: editName, type: editType }, password);
+      showSuccess('Wallet updated!');
+      setShowEditModal(false);
+      setEditWalletId('');
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, [editWalletId, editName, editType, password, updateWallet, showSuccess]);
 
   // Fund sub-wallet from treasury
   const handleFund = useCallback(async () => {
@@ -728,9 +932,13 @@ export function TreasuryWalletManager() {
     }
   }, [fundTarget, fundAmount, treasuryWallet, wallets, getKeypairs, rpcUrl, refreshBalances, refreshAllWalletHoldings, showSuccess]);
 
-  // Bulk fund all sub-wallets from treasury
+  // Bulk fund selected (or all) sub-wallets from treasury
   const handleBulkFund = useCallback(async () => {
-    if (!treasuryWallet || subWallets.length === 0) {
+    const targetWallets = selectedWalletIds.length > 0
+      ? subWallets.filter(w => selectedWalletIds.includes(w.id))
+      : subWallets;
+
+    if (!treasuryWallet || targetWallets.length === 0) {
       setError('No treasury or sub-wallets available');
       return;
     }
@@ -738,14 +946,14 @@ export function TreasuryWalletManager() {
     const treasuryBalance = treasuryWallet.balance || 0;
     // Leave some SOL in treasury for fees
     const availableToDistribute = treasuryBalance - RENT_RESERVE;
-    
+
     if (availableToDistribute <= 0) {
       setError('Insufficient treasury balance');
       return;
     }
 
-    const amountPerWallet = availableToDistribute / subWallets.length;
-    
+    const amountPerWallet = availableToDistribute / targetWallets.length;
+
     if (amountPerWallet < 0.001) {
       setError('Amount per wallet too small');
       return;
@@ -757,7 +965,7 @@ export function TreasuryWalletManager() {
     try {
       const keypairs = getKeypairs();
       const treasuryKeypair = keypairs.find(kp => kp.publicKey.toBase58() === treasuryWallet.address);
-      
+
       if (!treasuryKeypair) {
         throw new Error('Treasury keypair not found. Is vault unlocked?');
       }
@@ -765,12 +973,12 @@ export function TreasuryWalletManager() {
       const connection = new Connection(rpcUrl, 'confirmed');
       const { blockhash } = await connection.getLatestBlockhash();
 
-      // Create a transaction with transfers to all sub-wallets
+      // Create a transaction with transfers to selected sub-wallets
       const transaction = new Transaction();
       transaction.recentBlockhash = blockhash;
       transaction.feePayer = treasuryKeypair.publicKey;
 
-      for (const wallet of subWallets) {
+      for (const wallet of targetWallets) {
         transaction.add(
           SystemProgram.transfer({
             fromPubkey: treasuryKeypair.publicKey,
@@ -782,11 +990,11 @@ export function TreasuryWalletManager() {
 
       transaction.sign(treasuryKeypair);
       const signature = await connection.sendRawTransaction(transaction.serialize());
-      
+
       await connection.confirmTransaction(signature, 'confirmed');
 
-      showSuccess(`Funded ${subWallets.length} wallets with ${amountPerWallet.toFixed(4)} SOL each!`);
-      
+      showSuccess(`Funded ${targetWallets.length} wallets with ${amountPerWallet.toFixed(4)} SOL each!`);
+
       setTimeout(() => {
         Promise.all([refreshBalances(), refreshAllWalletHoldings()]);
       }, 1000);
@@ -796,20 +1004,24 @@ export function TreasuryWalletManager() {
     } finally {
       setIsBulkFunding(false);
     }
-  }, [treasuryWallet, subWallets, getKeypairs, rpcUrl, refreshBalances, refreshAllWalletHoldings, showSuccess]);
+  }, [treasuryWallet, subWallets, selectedWalletIds, getKeypairs, rpcUrl, refreshBalances, refreshAllWalletHoldings, showSuccess]);
 
-  // Sweep all sub-wallets back to treasury
+  // Sweep selected (or all) sub-wallets back to treasury
   const handleBulkSweep = useCallback(async () => {
-    if (!treasuryWallet || subWallets.length === 0) {
+    const targetWallets = selectedWalletIds.length > 0
+      ? subWallets.filter(w => selectedWalletIds.includes(w.id))
+      : subWallets;
+
+    if (!treasuryWallet || targetWallets.length === 0) {
       setError('No treasury or sub-wallets available');
       return;
     }
 
     // Filter wallets that have enough balance to sweep
-    const sweepableWallets = subWallets.filter(w => (w.balance || 0) > RENT_RESERVE + 0.001);
-    
+    const sweepableWallets = targetWallets.filter(w => (w.balance || 0) > RENT_RESERVE + 0.001);
+
     if (sweepableWallets.length === 0) {
-      setError('No wallets have enough balance to sweep');
+      setError('No selected wallets have enough balance to sweep');
       return;
     }
 
@@ -874,7 +1086,7 @@ export function TreasuryWalletManager() {
     } finally {
       setIsSweeping(false);
     }
-  }, [treasuryWallet, subWallets, getKeypairs, rpcUrl, refreshBalances, refreshAllWalletHoldings, showSuccess]);
+  }, [treasuryWallet, subWallets, selectedWalletIds, getKeypairs, rpcUrl, refreshBalances, refreshAllWalletHoldings, showSuccess]);
 
   // Sweep single wallet to treasury
   const handleSingleSweep = useCallback(async (walletId: string) => {
@@ -930,6 +1142,58 @@ export function TreasuryWalletManager() {
       setSweepingWalletId(null);
     }
   }, [wallets, treasuryWallet, getKeypairs, rpcUrl, refreshBalances, refreshAllWalletHoldings, showSuccess]);
+
+  // Delete wallet — sweep remaining SOL to treasury first, then remove from vault
+  const handleDeleteWallet = useCallback(async (walletId: string) => {
+    const wallet = wallets.find(w => w.id === walletId);
+    if (!wallet) {
+      setError('Wallet not found');
+      return;
+    }
+
+    setError(null);
+
+    try {
+      // If this wallet has any balance and treasury exists, sweep first
+      const balance = wallet.balance || 0;
+      if (balance > 0.000005 && treasuryWallet && wallet.id !== treasuryWallet.id) {
+        const keypairs = getKeypairs();
+        const walletKeypair = keypairs.find(kp => kp.publicKey.toBase58() === wallet.address);
+
+        if (walletKeypair) {
+          const connection = new Connection(rpcUrl, 'confirmed');
+          // Get fresh balance from chain (UI balance may be stale)
+          const lamports = await connection.getBalance(walletKeypair.publicKey);
+          // Reserve 5000 lamports for the transfer fee
+          const sweepLamports = lamports - 5000;
+
+          if (sweepLamports > 0) {
+            const { blockhash } = await connection.getLatestBlockhash();
+            const transaction = new Transaction().add(
+              SystemProgram.transfer({
+                fromPubkey: walletKeypair.publicKey,
+                toPubkey: new PublicKey(treasuryWallet.address),
+                lamports: sweepLamports,
+              })
+            );
+            transaction.recentBlockhash = blockhash;
+            transaction.feePayer = walletKeypair.publicKey;
+            transaction.sign(walletKeypair);
+
+            const signature = await connection.sendRawTransaction(transaction.serialize());
+            await connection.confirmTransaction(signature, 'confirmed');
+          }
+        }
+      }
+
+      // Now remove the wallet from the vault
+      await removeWallet(walletId, password);
+      showSuccess(`Deleted ${wallet.name}${balance > 0.000005 ? ` (swept ${balance.toFixed(4)} SOL to Treasury)` : ''}`);
+      refreshBalances();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, [wallets, treasuryWallet, getKeypairs, rpcUrl, password, removeWallet, refreshBalances, showSuccess]);
 
   useEffect(() => {
     if (isLocked) {
@@ -1097,10 +1361,10 @@ export function TreasuryWalletManager() {
             {error?.includes('Jupiter API key missing') && (
               <div className="mt-2">
                 <button
-                  onClick={() => { window.location.href = '/volume'; }}
+                  onClick={() => { window.history.pushState({}, '', '/settings'); window.dispatchEvent(new PopStateEvent('popstate')); }}
                   className="text-xs px-3 py-1 bg-orange-600/20 hover:bg-orange-600/30 text-orange-300 rounded"
                 >
-                  Go to /volume to set Jupiter API key
+                  Go to Settings to set Jupiter API key
                 </button>
               </div>
             )}
@@ -1230,10 +1494,32 @@ export function TreasuryWalletManager() {
                     </>
                   )}
                 </button>
+                <button
+                  onClick={handleSellAllTokens}
+                  disabled={isSellingAll || isBulkFunding || isSweeping}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-500 disabled:bg-slate-700 disabled:text-slate-500 rounded-lg text-sm font-medium"
+                >
+                  {isSellingAll ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Selling...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      Sell All Tokens
+                    </>
+                  )}
+                </button>
               </div>
+              {isSellingAll && sellAllProgress && (
+                <p className="text-xs text-amber-400 mt-2">{sellAllProgress}</p>
+              )}
               <p className="text-xs text-slate-500 mt-2">
-                Fund: distributes {((treasuryWallet.balance - RENT_RESERVE) / subWallets.length).toFixed(4)} SOL each • 
-                Sweep: leaves {RENT_RESERVE} SOL rent reserve
+                {selectedWalletIds.length > 0
+                  ? `Targeting ${selectedWalletIds.length} selected wallet${selectedWalletIds.length === 1 ? '' : 's'} • Fund: ${((treasuryWallet.balance - RENT_RESERVE) / selectedWalletIds.length).toFixed(4)} SOL each`
+                  : `Targeting all ${subWallets.length} sub-wallets • Fund: ${((treasuryWallet.balance - RENT_RESERVE) / subWallets.length).toFixed(4)} SOL each`}
+                {' • '}Sweep: leaves {RENT_RESERVE} SOL rent reserve
               </p>
             </div>
           )}
@@ -1243,7 +1529,28 @@ export function TreasuryWalletManager() {
       {/* Sub-Wallets Section */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-medium text-white">Sub-Wallets</h3>
+          <div className="flex items-center gap-3">
+            <h3 className="text-lg font-medium text-white">Sub-Wallets</h3>
+            {subWallets.length > 0 && (
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedWalletIds.length === subWallets.length && subWallets.length > 0}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedWalletIds(subWallets.map(w => w.id));
+                    } else {
+                      setSelectedWalletIds([]);
+                    }
+                  }}
+                  className="w-4 h-4 rounded border-slate-600 text-emerald-500 focus:ring-emerald-500 bg-slate-700"
+                />
+                <span className="text-sm text-slate-400">
+                  Select All{selectedWalletIds.length > 0 ? ` (${selectedWalletIds.length})` : ''}
+                </span>
+              </label>
+            )}
+          </div>
           <button
             onClick={() => setShowAddWalletModal(true)}
             className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm"
@@ -1264,22 +1571,45 @@ export function TreasuryWalletManager() {
             {subWallets.map((wallet) => (
               <div
                 key={wallet.id}
-                className="bg-slate-900 rounded-xl p-4 border border-slate-800 hover:border-slate-700 transition-colors"
+                className={`bg-slate-900 rounded-xl p-4 border transition-colors ${
+                  selectedWalletIds.includes(wallet.id)
+                    ? 'border-emerald-500/50 bg-emerald-500/5'
+                    : 'border-slate-800 hover:border-slate-700'
+                }`}
               >
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${
-                      wallet.type === 'sniper' ? 'bg-emerald-400' : 'bg-blue-400'
-                    }`} />
+                    <input
+                      type="checkbox"
+                      checked={selectedWalletIds.includes(wallet.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedWalletIds(prev => [...prev, wallet.id]);
+                        } else {
+                          setSelectedWalletIds(prev => prev.filter(id => id !== wallet.id));
+                        }
+                      }}
+                      className="w-4 h-4 rounded border-slate-600 text-emerald-500 focus:ring-emerald-500 bg-slate-700"
+                    />
+                    <div className="w-2 h-2 rounded-full bg-emerald-400" />
                     <span className="font-medium">{wallet.name}</span>
-                    <span className="text-xs px-2 py-0.5 bg-slate-800 rounded">{wallet.type}</span>
                   </div>
-                  <button
-                    onClick={() => removeWallet(wallet.id, password)}
-                    className="text-slate-500 hover:text-red-400 p-1"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleEditWallet(wallet.id)}
+                      className="text-slate-500 hover:text-blue-400 p-1"
+                      title="Edit wallet"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteWallet(wallet.id)}
+                      className="text-slate-500 hover:text-red-400 p-1"
+                      title="Delete wallet (sweeps SOL to treasury)"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-2 mb-3">
@@ -1347,23 +1677,41 @@ export function TreasuryWalletManager() {
       {/* Add Wallet Modal */}
       {showAddWalletModal && (
         <Modal onClose={() => setShowAddWalletModal(false)}>
-          <h3 className="text-lg font-bold mb-4">Add Sub-Wallet</h3>
+          <h3 className="text-lg font-bold mb-4">Add Sub-Wallet{newWalletCount > 1 ? 's' : ''}</h3>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Wallet Name</label>
+              <label className="block text-sm text-slate-400 mb-1">Wallet Name{newWalletCount > 1 ? ' (prefix)' : ''}</label>
               <input
                 type="text"
                 value={newWalletName}
                 onChange={(e) => setNewWalletName(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg"
-                placeholder="e.g., Sniper 1"
+                placeholder={newWalletCount > 1 ? 'e.g., Sniper → Sniper-1, Sniper-2...' : 'e.g., Sniper 1'}
               />
             </div>
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Import Key (optional)</label>
+              <label className="block text-sm text-slate-400 mb-1">How Many Wallets</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={1}
+                  max={Math.min(20, 100 - wallets.length)}
+                  value={newWalletCount}
+                  onChange={(e) => { setNewWalletCount(parseInt(e.target.value) || 1); if (parseInt(e.target.value) > 1) setImportKey(''); }}
+                  className="flex-1 accent-emerald-500"
+                  disabled={!!importKey}
+                />
+                <span className="text-lg font-bold text-white w-8 text-center">{newWalletCount}</span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                {wallets.length}/100 wallets used • {Math.min(20, 100 - wallets.length)} max per batch
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Import Key (optional, single wallet only)</label>
               <textarea
                 value={importKey}
-                onChange={(e) => setImportKey(e.target.value)}
+                onChange={(e) => { setImportKey(e.target.value); if (e.target.value) setNewWalletCount(1); }}
                 className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg h-20 font-mono text-xs"
                 placeholder="[240,5,159,...] or leave empty to generate new"
               />
@@ -1381,17 +1729,54 @@ export function TreasuryWalletManager() {
             {error && <p className="text-red-400 text-sm">{error}</p>}
             <div className="flex gap-3">
               <button
-                onClick={() => { setShowAddWalletModal(false); setNewWalletName(''); setImportKey(''); }}
+                onClick={() => { setShowAddWalletModal(false); setNewWalletName(''); setNewWalletCount(1); setImportKey(''); }}
                 className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg"
               >
                 Cancel
               </button>
               <button
                 onClick={handleAddSubWallet}
-                disabled={isLoading}
+                disabled={isLoading || !newWalletName}
                 className="flex-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg disabled:opacity-50"
               >
-                {isLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Add Wallet'}
+                {isLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : (
+                  newWalletCount > 1 && !importKey ? `Add ${newWalletCount} Wallets` : 'Add Wallet'
+                )}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Edit Wallet Modal */}
+      {showEditModal && (
+        <Modal onClose={() => setShowEditModal(false)}>
+          <h3 className="text-lg font-bold mb-4">Edit Wallet</h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Name</label>
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg focus:border-blue-500 focus:outline-none"
+                placeholder="Wallet name"
+              />
+            </div>
+            {error && <p className="text-red-400 text-sm">{error}</p>}
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowEditModal(false); setEditWalletId(''); }}
+                className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={isLoading || !editName}
+                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg disabled:opacity-50"
+              >
+                {isLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Save'}
               </button>
             </div>
           </div>

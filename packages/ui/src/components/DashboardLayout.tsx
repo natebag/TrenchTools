@@ -5,7 +5,6 @@ import {
   Shield, 
   LineChart, 
   Settings, 
-  LockKeyhole,
   Menu,
   Activity,
   Zap,
@@ -29,7 +28,6 @@ import { WhaleProvider } from '@/context/WhaleContext'
 import { ToastProvider } from './Toast'
 import { ErrorBoundary } from './ErrorBoundary'
 import { Dashboard } from './Dashboard'
-import { TreasuryView } from './TreasuryView'
 // WalletManagerBrowser available if needed
 import { TreasuryWalletManager } from './TreasuryWalletManager'
 import { SniperControl } from './SniperControl'
@@ -45,7 +43,6 @@ import { WhaleAlerts } from './WhaleAlerts'
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: Activity, description: 'Overview & quick actions' },
-  { path: '/treasury', label: 'Treasury', icon: LockKeyhole, description: 'Main funding & balances' },
   { path: '/wallets', label: 'Wallets', icon: Wallet, description: 'HD wallet management' },
   { path: '/snipe', label: 'Sniper', icon: Target, description: 'Token sniping control' },
   { path: '/shield', label: 'Shield', icon: Shield, description: 'Security scanner' },
@@ -437,7 +434,6 @@ function AppContent() {
   const RouteContent = ({ path }: { path: string }) => {
     switch (path) {
       case '/': return <Dashboard />
-      case '/treasury': return <TreasuryView />
       case '/wallets': return <TreasuryWalletManager />
       case '/snipe': return <SniperControl />
       case '/shield': return <ShieldScanner />

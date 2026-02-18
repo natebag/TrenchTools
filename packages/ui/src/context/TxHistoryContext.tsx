@@ -13,6 +13,7 @@ export interface TradeRecord {
   wallet: string;
   txHash?: string;
   status: 'success' | 'failed' | 'pending';
+  source?: 'sniper' | 'volume' | 'manual' | 'treasury';  // Which feature created this trade
 }
 
 interface TxHistoryContextType {
