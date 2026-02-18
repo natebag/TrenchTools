@@ -13,7 +13,7 @@ https://mainnet.helius-rpc.com/?api-key=YOUR_KEY
 ```
 
 ::: tip
-Use a dedicated RPC for production. Public endpoints have aggressive rate limits that will cause transaction failures during volume boosting.
+Use a dedicated RPC for production. Public endpoints have aggressive rate limits that will cause transaction failures during market making.
 :::
 
 ### Jupiter API Key

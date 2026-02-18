@@ -1,11 +1,11 @@
 # Monorepo Structure
 
-TrenchSniper OS uses a pnpm workspace with Turbo for build orchestration.
+TrenchTools uses a pnpm workspace with Turbo for build orchestration.
 
 ## Workspace Layout
 
 ```
-TrenchSniper-OS/
+TrenchTools-OS/
 ├── packages/
 │   ├── core/            # @trenchtools/core — TypeScript library
 │   ├── ui/              # @trenchtools/ui — React dashboard (main app)

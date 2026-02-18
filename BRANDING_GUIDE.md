@@ -1,4 +1,4 @@
-# TrenchSniper OS - Branding Guide
+# TrenchTools - Branding Guide
 
 > **The Operating System for Solana Trench Warfare**
 > *Snipe. Boost. Dominate. Open source.*
@@ -7,7 +7,7 @@
 
 ## Brand Overview
 
-**TrenchSniper OS** is an open-source market-making and trading toolkit for Solana token launches. It combines sniping, volume boosting, automated bot groups, wallet management, and portfolio analytics into a single self-hosted dashboard. Built for degens who want institutional-grade tooling without the institutional price tag.
+**TrenchTools** is an open-source market-making and trading toolkit for Solana token launches. It combines sniping, market making, automated bot groups, wallet management, and portfolio analytics into a single self-hosted dashboard. Built for degens who want institutional-grade tooling without the institutional price tag.
 
 ### Core Mission
 *"Give every Solana trader the same toolkit the insiders use — open source, self-hosted, no fees."*
@@ -34,7 +34,7 @@
 - Vaporware — every feature ships with working DEX integration
 
 ### Brand Personality
-**The Character**: TrenchSniper is the quiet operator in the Discord who never calls plays but somehow always has a position before the pump. Technical, understated, efficient. They don't need to flex — the P&L speaks for itself. Think terminal aesthetic meets trading floor energy.
+**The Character**: TrenchTools is the quiet operator in the Discord who never calls plays but somehow always has a position before the pump. Technical, understated, efficient. They don't need to flex — the P&L speaks for itself. Think terminal aesthetic meets trading floor energy.
 
 ---
 
@@ -71,20 +71,20 @@ text-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
 - **Emphasis**: Bold sparingly. Never all-caps except token tickers (SOL, USDC)
 
 ### Logo Concept
-The TrenchSniper logo should convey:
-- **Precision**: Clean geometric lines, crosshair or scope motif
+The TrenchTools logo should convey:
+- **Precision**: Clean geometric lines, tool/wrench motif
 - **Speed**: Forward-leaning, dynamic energy
 - **Technical**: Terminal/hacker aesthetic, monospace elements
-- **Military/Tactical**: Subtle nod to "trench warfare" — not aggressive, just operational
+- **Utility**: A toolkit you reach for — practical, not flashy
 
 Current in-app identity:
-- Zap icon (lightning bolt) in emerald gradient
-- "TrenchSniper" title + "Operating System" subtitle
-- Gradient: `from-emerald-500 to-emerald-700` on icon background
+- Wrench icon in emerald on the landing page
+- Zap icon (lightning bolt) in emerald gradient on the dashboard sidebar
+- "TrenchTools" as brand name across landing, GitHub, and packages
 
 Possible logo elements:
-- Stylized crosshair with "TS" monogram
-- Lightning bolt through a scope reticle
+- Stylized wrench or tool motif with "TT" monogram
+- Emerald gradient wrench with terminal aesthetic
 - Terminal cursor `█` integrated into lettermark
 - Subtle Solana gradient accent
 
@@ -159,7 +159,7 @@ The tool does the talking. We don't hype, we ship.
 
 **Good tweet examples**:
 ```
-shipped bot groups in trenchsniper os
+shipped bot groups in trenchtools os
 
 create a group → auto-generates wallets → funds from treasury → runs volume → on stop: sells tokens, sweeps SOL, deletes wallets
 
@@ -171,7 +171,7 @@ github.com/...
 ```
 pumpfun auto-detection is live.
 
-paste any CA → trenchsniper checks if it's still on the bonding curve → routes to pumpportal API or jupiter automatically.
+paste any CA → trenchtools checks if it's still on the bonding curve → routes to pumpportal API or jupiter automatically.
 
 no manual dex selection needed.
 ```
@@ -228,14 +228,14 @@ no manual dex selection needed.
 - *"The Degen's Dashboard"*
 
 ### Elevator Pitch (30 seconds)
-> "TrenchSniper OS is an open-source, self-hosted trading dashboard for Solana. You snipe tokens, boost volume with multi-wallet bots, track P&L in real time, and detect honeypots — all from one UI. It auto-detects whether a token is on PumpFun or Jupiter and routes accordingly. No hosted service, no fees, no API keys to buy. Just clone, run, and operate."
+> "TrenchTools is an open-source, self-hosted trading dashboard for Solana. You snipe tokens, boost volume with multi-wallet bots, track P&L in real time, and detect honeypots — all from one UI. It auto-detects whether a token is on PumpFun or Jupiter and routes accordingly. No hosted service, no fees, no API keys to buy. Just clone, run, and operate."
 
 ---
 
 ## Content Pillars
 
 ### 1. Tooling
-The core product. What TrenchSniper OS does and how to use it.
+The core product. What TrenchTools does and how to use it.
 - Feature walkthroughs and screenshots
 - Setup guides and configuration tips
 - Changelog and release notes
@@ -263,16 +263,16 @@ Real-world usage patterns and strategies.
 ## Competitive Positioning
 
 ### vs. Paid Trading Bots (BonkBot, Trojan, etc.)
-**TrenchSniper advantage**: Free, open source, self-hosted, no revenue share, full control
+**TrenchTools advantage**: Free, open source, self-hosted, no revenue share, full control
 
 ### vs. Manual Trading (Jupiter UI, PumpFun site)
-**TrenchSniper advantage**: Multi-wallet, automated volume, bot groups, P&L tracking, all-in-one
+**TrenchTools advantage**: Multi-wallet, automated volume, bot groups, P&L tracking, all-in-one
 
 ### vs. Custom Scripts
-**TrenchSniper advantage**: Full UI, no coding required, persistent config, real-time feedback
+**TrenchTools advantage**: Full UI, no coding required, persistent config, real-time feedback
 
 ### vs. Institutional Tools
-**TrenchSniper advantage**: Free, Solana-native, degen-friendly UX, no KYC or onboarding
+**TrenchTools advantage**: Free, Solana-native, degen-friendly UX, no KYC or onboarding
 
 ---
 
@@ -299,7 +299,7 @@ Real-world usage patterns and strategies.
 
 ## Evolution & Consistency
 
-This branding guide is a living document. As TrenchSniper OS grows:
+This branding guide is a living document. As TrenchTools grows:
 
 1. **Stay consistent** with the emerald/slate visual system
 2. **Keep the tone** technical, understated, and honest

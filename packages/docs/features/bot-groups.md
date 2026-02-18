@@ -65,7 +65,7 @@ The stop process reports exactly what happened:
 
 If you close the browser while bots are running, the wallets still exist in your vault. On next load:
 
-1. TrenchSniper detects wallets matching bot name patterns that are in "idle" state
+1. TrenchTools detects wallets matching bot name patterns that are in "idle" state
 2. Shows **Clean Up** and **Resume** buttons on the bot card
 
 - **Resume**: Picks up where it left off — starts trading with the existing wallets (no re-funding)

@@ -1,6 +1,6 @@
-# Volume Boosting
+# Market Making
 
-The Volume Booster generates real on-chain trading volume across multiple wallets with configurable patterns designed to look organic.
+The Market Making Engine generates real on-chain trading volume across multiple wallets with configurable patterns designed to look organic.
 
 ## How It Works
 
@@ -16,7 +16,7 @@ The engine cycles through your selected wallets, executing real buy/sell swaps a
 
 | Pattern | Description | Best For |
 |---------|-------------|----------|
-| **Organic** | Randomized intervals and amounts with natural-looking variance | General volume boosting |
+| **Organic** | Randomized intervals and amounts with natural-looking variance | General market making |
 | **Steady** | Consistent intervals with small random jitter | Maintaining baseline volume |
 | **Burst** | Rapid trades in clusters with quiet periods between | Simulating momentum |
 | **Wave** | Volume ramps up and down in sine-wave cycles | Extended campaigns |

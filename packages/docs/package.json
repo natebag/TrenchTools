@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "TrenchSniper OS documentation site — docs.trenchtools.io",
+  "description": "TrenchTools documentation site — docs.trenchtools.io",
   "scripts": {
     "dev": "vitepress dev",
     "build": "vitepress build",

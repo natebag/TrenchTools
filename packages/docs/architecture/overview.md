@@ -1,6 +1,6 @@
 # Architecture Overview
 
-TrenchSniper OS is a monorepo with two primary packages: a TypeScript core library and a React dashboard UI.
+TrenchTools is a monorepo with two primary packages: a TypeScript core library and a React dashboard UI.
 
 ## High-Level Architecture
 

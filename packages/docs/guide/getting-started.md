@@ -73,7 +73,7 @@ Send SOL to your treasury wallet address from any external wallet (Phantom, Solf
 4. Configure slippage (default 10% is fine for most tokens)
 5. Click **Snipe**
 
-TrenchSniper will auto-detect whether the token is on PumpFun or Jupiter and route the trade accordingly.
+TrenchTools will auto-detect whether the token is on PumpFun or Jupiter and route the trade accordingly.
 
 ## Build for Production
 
@@ -90,7 +90,7 @@ The production build outputs to `packages/ui/dist/` — a static site you can ho
 ## Project Structure
 
 ```
-TrenchSniper-OS/
+TrenchTools-OS/
 ├── packages/
 │   ├── core/          # TypeScript library (wallet, trading, P&L, shield)
 │   ├── ui/            # React dashboard (the main app)

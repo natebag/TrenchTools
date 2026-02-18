@@ -81,7 +81,7 @@ npx turbo run build --filter=@trenchtools/ui --force
 # Output: packages/ui/dist/
 ```
 
-This can be hosted the same way, but since TrenchSniper OS is self-hosted by design, most users will run `pnpm start` locally.
+This can be hosted the same way, but since TrenchTools is self-hosted by design, most users will run `pnpm start` locally.
 
 ## Environment Variables
 

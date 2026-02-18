@@ -1,6 +1,6 @@
 # Treasury & Wallets
 
-The Treasury Manager is the central hub for all wallet operations in TrenchSniper OS.
+The Treasury Manager is the central hub for all wallet operations in TrenchTools.
 
 ## Wallet Management
 

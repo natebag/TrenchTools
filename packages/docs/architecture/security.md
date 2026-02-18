@@ -1,6 +1,6 @@
 # Security Model
 
-TrenchSniper OS is designed with a "trust nothing, host everything locally" security model.
+TrenchTools is designed with a "trust nothing, host everything locally" security model.
 
 ## Encryption
 
@@ -27,13 +27,13 @@ While the vault is unlocked:
 ## Network Security
 
 ### No Backend Server
-TrenchSniper OS has no backend. The UI is a static SPA that communicates directly with:
+TrenchTools has no backend. The UI is a static SPA that communicates directly with:
 - Your configured Solana RPC endpoint
 - Jupiter Quote/Swap API (HTTPS)
 - PumpPortal API (HTTPS)
 - DexScreener API (HTTPS)
 
-No TrenchSniper server ever sees your keys, trades, or data.
+No TrenchTools server ever sees your keys, trades, or data.
 
 ### RPC Trust
 You must trust your RPC provider with your transaction data. They can see:
@@ -70,7 +70,7 @@ Optional Jito validator tips for MEV protection on critical transactions.
 1. **Use a strong vault password** — 12+ characters, not reused
 2. **Lock the vault** when you're done trading
 3. **Export backups** regularly and store them securely
-4. **Use a dedicated browser profile** for TrenchSniper
+4. **Use a dedicated browser profile** for TrenchTools
 5. **Start on devnet** to test all features before using mainnet
 6. **Audit the code** — it's open source for a reason
 7. **Use a dedicated RPC** — public RPCs may log your activity

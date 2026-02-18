@@ -1,6 +1,6 @@
 # Data Persistence
 
-All TrenchSniper OS data is stored in browser `localStorage`. Nothing is sent to any server.
+All TrenchTools data is stored in browser `localStorage`. Nothing is sent to any server.
 
 ## Storage Keys
 

@@ -1,6 +1,6 @@
 # DEX Auto-Routing
 
-TrenchSniper OS automatically detects which DEX a token is traded on and routes swaps accordingly. You never need to manually select a DEX.
+TrenchTools automatically detects which DEX a token is traded on and routes swaps accordingly. You never need to manually select a DEX.
 
 ## How It Works
 

@@ -1,10 +1,10 @@
 ---
 layout: home
-title: TrenchSniper OS
+title: TrenchTools
 titleTemplate: The Operating System for Solana Trench Warfare
 
 hero:
-  name: TrenchSniper OS
+  name: TrenchTools
   text: The Operating System for Solana Trench Warfare
   tagline: Open-source market making and trading toolkit for Solana. Snipe. Boost. Dominate.
   actions:
@@ -20,11 +20,11 @@ features:
     title: Token Sniper
     details: Auto-detect PumpFun vs Jupiter. Snipe any token with configurable slippage, priority fees, and auto-sell triggers (TP, SL, trailing stop).
   - icon: 📈
-    title: Volume Boosting
-    details: Multi-wallet volume generation with organic, steady, burst, and wave patterns. Real swaps through auto-routed DEX integration.
-  - icon: 🤖
-    title: Bot Groups
-    details: Self-contained market-making units. Auto-generate wallets, fund from treasury, run volume, and clean up on stop. Up to 6 groups simultaneously.
+    title: Market Making
+    details: Two modes — Manual Volume with multi-wallet patterns (organic, steady, burst, wave) and Bot Groups that auto-generate wallets, fund, trade, and clean up on stop.
+  - icon: 📉
+    title: Token Charts
+    details: Real-time price charts powered by Lightweight Charts. Candlesticks, volume bars, and interactive time ranges for any Solana token.
   - icon: 💼
     title: Treasury & Wallets
     details: Browser-encrypted HD wallet vault. Generate, import, fund, sweep, and manage sniper, treasury, and burner wallets from one dashboard.
@@ -42,9 +42,9 @@ features:
     details: Powered by Allium. Detect wallet clustering, wash trading, coordinated timing, and interval regularity patterns.
 ---
 
-## Why TrenchSniper OS?
+## Why TrenchTools?
 
-Most Solana trading tools are either paid bots with revenue shares, closed-source black boxes, or half-finished scripts on GitHub. TrenchSniper OS is different:
+Most Solana trading tools are either paid bots with revenue shares, closed-source black boxes, or half-finished scripts on GitHub. TrenchTools is different:
 
 - **Free & Open Source** — MIT licensed, audit the code yourself
 - **Self-Hosted** — Runs on your machine, your keys never leave your browser

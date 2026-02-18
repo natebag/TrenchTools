@@ -1,6 +1,6 @@
 # Trade Recording
 
-Every trade in TrenchSniper OS is recorded in the transaction history. This history is the source of truth for P&L calculations.
+Every trade in TrenchTools is recorded in the transaction history. This history is the source of truth for P&L calculations.
 
 ## How Trades Are Recorded
 

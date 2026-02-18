@@ -1,6 +1,6 @@
 # Wallet System
 
-The wallet system is the foundation of TrenchSniper OS. All trading, volume, and bot operations depend on wallets stored in the browser-encrypted vault.
+The wallet system is the foundation of TrenchTools. All trading, volume, and bot operations depend on wallets stored in the browser-encrypted vault.
 
 ## Wallet Types
 

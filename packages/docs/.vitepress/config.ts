@@ -1,21 +1,21 @@
 import { defineConfig } from 'vitepress'
 
 export default defineConfig({
-  title: 'TrenchSniper OS',
+  title: 'TrenchTools',
   description: 'The Operating System for Solana Trench Warfare',
   lang: 'en-US',
 
   head: [
     ['meta', { name: 'theme-color', content: '#10B981' }],
     ['meta', { property: 'og:type', content: 'website' }],
-    ['meta', { property: 'og:title', content: 'TrenchSniper OS Docs' }],
+    ['meta', { property: 'og:title', content: 'TrenchTools Docs' }],
     ['meta', { property: 'og:description', content: 'Open-source market making and trading toolkit for Solana' }],
     ['meta', { property: 'og:url', content: 'https://docs.trenchtools.io' }],
   ],
 
   themeConfig: {
     logo: '/logo.svg',
-    siteTitle: 'TrenchSniper OS',
+    siteTitle: 'TrenchTools',
 
     nav: [
       { text: 'Guide', link: '/guide/getting-started' },
@@ -36,7 +36,7 @@ export default defineConfig({
         {
           text: 'Introduction',
           items: [
-            { text: 'What is TrenchSniper OS?', link: '/guide/what-is-trenchsniper' },
+            { text: 'What is TrenchTools?', link: '/guide/what-is-trenchtools' },
             { text: 'Getting Started', link: '/guide/getting-started' },
             { text: 'Configuration', link: '/guide/configuration' },
           ]
@@ -61,13 +61,14 @@ export default defineConfig({
           text: 'Features',
           items: [
             { text: 'Sniper', link: '/features/sniper' },
-            { text: 'Volume Boosting', link: '/features/volume' },
+            { text: 'Market Making', link: '/features/volume' },
             { text: 'Bot Groups', link: '/features/bot-groups' },
             { text: 'Treasury & Wallets', link: '/features/treasury' },
             { text: 'P&L Analytics', link: '/features/pnl' },
             { text: 'Shield Scanner', link: '/features/shield' },
             { text: 'Whale Alerts', link: '/features/whale-alerts' },
             { text: 'Manipulation Detection', link: '/features/detection' },
+            { text: 'Token Charts', link: '/features/charts' },
             { text: 'Activity Generator', link: '/features/activity' },
           ]
         }
