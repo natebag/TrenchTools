@@ -124,22 +124,22 @@ function App() {
           
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
             <FeatureCard
-              icon={<img src="/icons/crosshair.png" alt="" className="w-12 h-12 rounded-lg object-cover" />}
+              icon={<img src="/icons/crosshair.png" alt="" className="w-12 h-12 rounded-lg object-contain" />}
               title="Token Sniper"
               description="Lightning-fast token sniping with auto-buy on launch and configurable limits."
             />
             <FeatureCard
-              icon={<img src="/icons/graphup.png" alt="" className="w-12 h-12 rounded-lg object-cover" />}
+              icon={<img src="/icons/graph.png" alt="" className="w-12 h-12 rounded-lg object-contain" />}
               title="Market Making"
               description="Automated volume and liquidity with smart patterns that mimic natural flow."
             />
             <FeatureCard
-              icon={<img src="/icons/wallet.png" alt="" className="w-12 h-12 rounded-lg object-cover" />}
+              icon={<img src="/icons/wallet.png" alt="" className="w-12 h-12 rounded-lg object-contain" />}
               title="Wallet Manager"
               description="Multi-wallet treasury with auto-distribution, sweeping, and balance tracking."
             />
             <FeatureCard
-              icon={<img src="/icons/graph.png" alt="" className="w-12 h-12 rounded-lg object-cover" />}
+              icon={<img src="/icons/graphup.png" alt="" className="w-12 h-12 rounded-lg object-contain" />}
               title="Live Charts"
               description="Real-time price charts, volume analysis, and trade markers."
             />
@@ -147,17 +147,17 @@ function App() {
 
           <div className="grid md:grid-cols-3 gap-6 mt-6">
             <FeatureCard
-              icon={<img src="/icons/robot.png" alt="" className="w-12 h-12 rounded-lg object-cover" />}
+              icon={<img src="/icons/robot.png" alt="" className="w-12 h-12 rounded-lg object-contain" />}
               title="Telegram Bot"
               description="Trade from Telegram. Snipe, boost volume, and manage wallets on the go."
             />
             <FeatureCard
-              icon={<img src="/icons/shield.png" alt="" className="w-12 h-12 rounded-lg object-cover" />}
+              icon={<img src="/icons/shield.png" alt="" className="w-12 h-12 rounded-lg object-contain" />}
               title="Non-Custodial"
               description="Your keys, your coins. We never store or have access to your private keys."
             />
             <FeatureCard
-              icon={<Zap className="w-8 h-8" />}
+              icon={<img src="/icons/settings.png" alt="" className="w-12 h-12 rounded-lg object-contain" />}
               title="Analytics"
               description="Track performance, P&L, and export detailed trade reports."
             />
