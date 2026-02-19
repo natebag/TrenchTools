@@ -20,7 +20,6 @@ function App() {
             </div>
             <div className="hidden md:flex items-center gap-8">
               <a href="#features" className="text-slate-400 hover:text-white transition-colors">Features</a>
-              <a href="#how-it-works" className="text-slate-400 hover:text-white transition-colors">How it Works</a>
               <a href="#dashboard" className="text-slate-400 hover:text-white transition-colors">Dashboard</a>
               <a
                 href="https://docs.trenchtools.io"
@@ -160,37 +159,6 @@ function App() {
               icon={<img src="/icons/settings.png" alt="" className="w-12 h-12 rounded-lg object-contain" />}
               title="Analytics"
               description="Track performance, P&L, and export detailed trade reports."
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* How It Works Section */}
-      <section id="how-it-works" className="py-20 px-4 bg-slate-900/50">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4">Get Started in Minutes</h2>
-            <p className="text-xl text-slate-400">Three simple steps to launch your market making operations</p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            <StepCard
-              number="01"
-              title="Clone & Configure"
-              description="Clone the repo, install dependencies, and configure your environment with your RPC endpoints and wallet keys."
-              code="git clone https://github.com/natebag/Trenchtools && pnpm install"
-            />
-            <StepCard
-              number="02"
-              title="Set Up Wallets"
-              description="Import or generate wallets, configure your treasury, and set up automatic fund distribution rules."
-              code="pnpm run setup:wallets"
-            />
-            <StepCard
-              number="03"
-              title="Launch Dashboard"
-              description="Start the dashboard, connect to Solana mainnet or devnet, and begin your market making operations."
-              code="pnpm run dev"
             />
           </div>
         </div>
@@ -369,7 +337,6 @@ function App() {
               <h4 className="font-semibold mb-4">Product</h4>
               <ul className="space-y-2 text-slate-400">
                 <li><a href="#features" className="hover:text-white transition-colors">Features</a></li>
-                <li><a href="#how-it-works" className="hover:text-white transition-colors">How it Works</a></li>
                 <li><a href="#dashboard" className="hover:text-white transition-colors">Dashboard</a></li>
               </ul>
             </div>
@@ -446,26 +413,6 @@ function FeatureCard({ icon, title, description }: FeatureCardProps) {
       </div>
       <h3 className="text-xl font-semibold mb-2">{title}</h3>
       <p className="text-slate-400">{description}</p>
-    </div>
-  )
-}
-
-interface StepCardProps {
-  number: string
-  title: string
-  description: string
-  code: string
-}
-
-function StepCard({ number, title, description, code }: StepCardProps) {
-  return (
-    <div className="relative">
-      <div className="text-6xl font-bold text-emerald-500/20 mb-4">{number}</div>
-      <h3 className="text-xl font-semibold mb-2">{title}</h3>
-      <p className="text-slate-400 mb-4">{description}</p>
-      <div className="bg-slate-800 rounded-lg p-3 font-mono text-sm text-emerald-400 overflow-x-auto">
-        <code>{code}</code>
-      </div>
     </div>
   )
 }
