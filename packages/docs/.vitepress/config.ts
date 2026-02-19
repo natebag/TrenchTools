@@ -6,6 +6,7 @@ export default defineConfig({
   lang: 'en-US',
 
   head: [
+    ['link', { rel: 'icon', type: 'image/png', href: '/favicon.png' }],
     ['meta', { name: 'theme-color', content: '#10B981' }],
     ['meta', { property: 'og:type', content: 'website' }],
     ['meta', { property: 'og:title', content: 'TrenchTools Docs' }],
@@ -14,7 +15,7 @@ export default defineConfig({
   ],
 
   themeConfig: {
-    logo: '/logo.svg',
+    logo: '/favicon.png',
     siteTitle: 'TrenchTools',
 
     nav: [

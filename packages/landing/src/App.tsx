@@ -1,18 +1,11 @@
 import {
-  Zap,
-  Shield,
-  BarChart3,
-  Wallet,
   Github,
   Twitter,
   ArrowRight,
   Check,
   ExternalLink,
   BookOpen,
-  Wrench,
-  TrendingUp,
-  Crosshair,
-  Bot,
+  Zap,
 } from 'lucide-react'
 
 function App() {
@@ -22,9 +15,8 @@ function App() {
       <nav className="fixed top-0 left-0 right-0 z-50 glass">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-2">
-              <Wrench className="w-8 h-8 text-emerald-500" />
-              <span className="text-xl font-bold">TrenchTools</span>
+            <div className="flex items-center">
+              <img src="/logo.png" alt="TrenchTools" className="h-10 w-auto" />
             </div>
             <div className="hidden md:flex items-center gap-8">
               <a href="#features" className="text-slate-400 hover:text-white transition-colors">Features</a>
@@ -77,12 +69,12 @@ function App() {
             
             <p className="text-xl text-slate-400 max-w-3xl mx-auto mb-10">
               The complete Solana trading toolkit. Token sniping, market making, 
-              wallet management, and real-time analytics — open source or hosted with just 0.05% fees.
+              wallet management, and real-time analytics — open source or hosted with just 0.5% fees.
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <a
-                href="/app"
+                href="https://app.trenchtools.io"
                 className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 px-8 py-4 rounded-xl text-lg font-semibold transition-all hover:scale-105 animate-pulse-glow"
               >
                 <Zap className="w-5 h-5" />
@@ -111,7 +103,7 @@ function App() {
               </div>
               <div className="flex items-center gap-2">
                 <Check className="w-5 h-5 text-emerald-500" />
-                <span>0.05% Hosted Fee</span>
+                <span>0.5% Hosted Fee</span>
               </div>
               <div className="flex items-center gap-2">
                 <Check className="w-5 h-5 text-emerald-500" />
@@ -132,22 +124,22 @@ function App() {
           
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
             <FeatureCard
-              icon={<Crosshair className="w-8 h-8" />}
+              icon={<img src="/icons/crosshair.png" alt="" className="w-12 h-12 rounded-lg object-cover" />}
               title="Token Sniper"
               description="Lightning-fast token sniping with auto-buy on launch and configurable limits."
             />
             <FeatureCard
-              icon={<Zap className="w-8 h-8" />}
-              title="market making"
-              description="Automated liquidity provision with smart patterns that natural flow."
+              icon={<img src="/icons/graphup.png" alt="" className="w-12 h-12 rounded-lg object-cover" />}
+              title="Market Making"
+              description="Automated volume and liquidity with smart patterns that mimic natural flow."
             />
             <FeatureCard
-              icon={<Wallet className="w-8 h-8" />}
+              icon={<img src="/icons/wallet.png" alt="" className="w-12 h-12 rounded-lg object-cover" />}
               title="Wallet Manager"
               description="Multi-wallet treasury with auto-distribution, sweeping, and balance tracking."
             />
             <FeatureCard
-              icon={<BarChart3 className="w-8 h-8" />}
+              icon={<img src="/icons/graph.png" alt="" className="w-12 h-12 rounded-lg object-cover" />}
               title="Live Charts"
               description="Real-time price charts, volume analysis, and trade markers."
             />
@@ -155,17 +147,17 @@ function App() {
 
           <div className="grid md:grid-cols-3 gap-6 mt-6">
             <FeatureCard
-              icon={<Bot className="w-8 h-8" />}
+              icon={<img src="/icons/robot.png" alt="" className="w-12 h-12 rounded-lg object-cover" />}
               title="Telegram Bot"
               description="Trade from Telegram. Snipe, boost volume, and manage wallets on the go."
             />
             <FeatureCard
-              icon={<Shield className="w-8 h-8" />}
+              icon={<img src="/icons/shield.png" alt="" className="w-12 h-12 rounded-lg object-cover" />}
               title="Non-Custodial"
               description="Your keys, your coins. We never store or have access to your private keys."
             />
             <FeatureCard
-              icon={<TrendingUp className="w-8 h-8" />}
+              icon={<Zap className="w-8 h-8" />}
               title="Analytics"
               description="Track performance, P&L, and export detailed trade reports."
             />
@@ -313,7 +305,7 @@ function App() {
           <h2 className="text-4xl font-bold mb-4">Open Source Forever</h2>
           <p className="text-xl text-slate-400 mb-8">
             TrenchTools is 100% open source under the MIT license. Self-host for free, 
-            or use our hosted service for just 0.05% per swap. No token gates, no VC bullshit.
+            or use our hosted service for just 0.5% per swap. No token gates, no VC bullshit.
           </p>
           
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
@@ -365,9 +357,8 @@ function App() {
         <div className="max-w-7xl mx-auto">
           <div className="grid md:grid-cols-4 gap-8 mb-12">
             <div>
-              <div className="flex items-center gap-2 mb-4">
-                <Wrench className="w-6 h-6 text-emerald-500" />
-                <span className="text-lg font-bold">TrenchTools</span>
+              <div className="flex items-center mb-4">
+                <img src="/logo.png" alt="TrenchTools" className="h-8 w-auto" />
               </div>
               <p className="text-slate-400 text-sm">
                 Open-source Solana trading suite. Built for degens, by degens.
@@ -450,7 +441,7 @@ interface FeatureCardProps {
 function FeatureCard({ icon, title, description }: FeatureCardProps) {
   return (
     <div className="glass rounded-xl p-6 hover:border-emerald-500/50 transition-all group">
-      <div className="w-14 h-14 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500 mb-4 group-hover:scale-110 transition-transform">
+      <div className="w-12 h-12 rounded-lg overflow-hidden flex items-center justify-center text-emerald-500 mb-4 group-hover:scale-110 transition-transform">
         {icon}
       </div>
       <h3 className="text-xl font-semibold mb-2">{title}</h3>
