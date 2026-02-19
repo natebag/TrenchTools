@@ -16,9 +16,14 @@ import {
   ArrowDown,
   ArrowUp,
   Plus,
-  Fish
+  Fish,
+  LogOut,
+  User
 } from 'lucide-react'
 import { WithdrawModal } from './WithdrawModal'
+import { IS_HOSTED } from '@/lib/env'
+import { AuthProvider } from '@/context/AuthContext'
+import { AuthGate } from './AuthGate'
 import { WalletProvider } from '@/context/WalletContext'
 import { NetworkProvider, useNetwork } from '@/context/NetworkContext'
 import { ActiveTokensProvider } from '@/context/ActiveTokensContext'
@@ -414,6 +419,151 @@ function WalletButton() {
   );
 }
 
+function AccountMenu() {
+  const [isOpen, setIsOpen] = useState(false);
+  const [editingUsername, setEditingUsername] = useState(false);
+  const [newUsername, setNewUsername] = useState('');
+  const [usernameError, setUsernameError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  // Read user info from the stored access token
+  const getUser = () => {
+    try {
+      const token = localStorage.getItem('trench_refresh_token');
+      if (!token) return null;
+      const stored = sessionStorage.getItem('trench_user_info');
+      if (stored) return JSON.parse(stored);
+      return { label: 'Account' };
+    } catch {
+      return { label: 'Account' };
+    }
+  };
+
+  const user = getUser();
+  if (!IS_HOSTED || !user) return null;
+
+  const displayName = user.username || user.email || (user.walletAddress ? user.walletAddress.slice(0, 6) + '...' + user.walletAddress.slice(-4) : 'User');
+
+  const handleLogout = () => {
+    window.dispatchEvent(new Event('trench-logout'));
+    setIsOpen(false);
+  };
+
+  const handleSaveUsername = async () => {
+    if (!newUsername.trim()) return;
+    setSaving(true);
+    setUsernameError(null);
+    try {
+      const { apiClient } = await import('@/lib/apiClient');
+      const resp: { username: string; accessToken: string } = await apiClient.put('/auth/username', { username: newUsername.trim() });
+      // Update sessionStorage with new token info
+      const { setAccessToken } = await import('@/lib/apiClient');
+      setAccessToken(resp.accessToken);
+      try {
+        const payload = JSON.parse(atob(resp.accessToken.split('.')[1]));
+        sessionStorage.setItem('trench_user_info', JSON.stringify({
+          email: payload.email || null,
+          walletAddress: payload.walletAddress || null,
+          username: payload.username || null,
+        }));
+      } catch {}
+      setEditingUsername(false);
+      setNewUsername('');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to set username';
+      // Extract error from API response if possible
+      const match = msg.match(/"error":"([^"]+)"/);
+      setUsernameError(match ? match[1] : msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-2 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm transition-colors"
+      >
+        <User className="w-4 h-4 text-slate-400" />
+        {user.username && <span className="text-slate-300 text-xs hidden sm:inline">{user.username}</span>}
+      </button>
+
+      {isOpen && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => { setIsOpen(false); setEditingUsername(false); }} />
+          <div className="absolute right-0 mt-2 w-56 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+            <div className="p-3 border-b border-slate-800">
+              <p className="text-xs text-slate-500">Signed in as</p>
+              <p className="text-sm text-white truncate mt-0.5 font-medium">
+                {displayName}
+              </p>
+              {user.username && user.email && (
+                <p className="text-xs text-slate-500 truncate mt-0.5">{user.email}</p>
+              )}
+              {user.username && user.walletAddress && (
+                <p className="text-xs text-slate-500 truncate mt-0.5 font-mono">{user.walletAddress.slice(0, 6)}...{user.walletAddress.slice(-4)}</p>
+              )}
+            </div>
+
+            <div className="p-1.5 space-y-0.5">
+              {/* Set/Change username */}
+              {editingUsername ? (
+                <div className="px-3 py-2 space-y-2">
+                  <input
+                    type="text"
+                    value={newUsername}
+                    onChange={e => { setNewUsername(e.target.value); setUsernameError(null); }}
+                    placeholder="Enter username..."
+                    maxLength={32}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                    autoFocus
+                    onKeyDown={e => e.key === 'Enter' && handleSaveUsername()}
+                  />
+                  {usernameError && <p className="text-xs text-red-400">{usernameError}</p>}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleSaveUsername}
+                      disabled={saving || !newUsername.trim()}
+                      className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-lg text-xs font-medium transition-colors"
+                    >
+                      {saving ? 'Saving...' : 'Save'}
+                    </button>
+                    <button
+                      onClick={() => { setEditingUsername(false); setUsernameError(null); }}
+                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => { setEditingUsername(true); setNewUsername(user.username || ''); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-slate-800 rounded-lg text-left transition-colors group"
+                >
+                  <User className="w-4 h-4 text-slate-400 group-hover:text-emerald-400" />
+                  <span className="text-sm text-slate-300 group-hover:text-emerald-400">
+                    {user.username ? 'Change Username' : 'Set Username'}
+                  </span>
+                </button>
+              )}
+
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-red-500/10 rounded-lg text-left transition-colors group"
+              >
+                <LogOut className="w-4 h-4 text-slate-400 group-hover:text-red-400" />
+                <span className="text-sm text-slate-300 group-hover:text-red-400">Sign Out</span>
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function Header({ onMenuClick }: { onMenuClick: () => void }) {
   return (
     <header className="h-16 bg-slate-900/80 backdrop-blur-md border-b border-slate-800 flex items-center justify-between px-6 sticky top-0 z-30">
@@ -436,6 +586,7 @@ function Header({ onMenuClick }: { onMenuClick: () => void }) {
         <NetworkSwitcher />
         <div className="w-px h-6 bg-slate-700 hidden sm:block" />
         <WalletButton />
+        <AccountMenu />
       </div>
     </header>
   )
@@ -508,7 +659,7 @@ function AppContent() {
 }
 
 export function DashboardLayout() {
-  return (
+  const core = (
     <ErrorBoundary>
       <NetworkProvider>
         <WalletProvider>
@@ -527,6 +678,16 @@ export function DashboardLayout() {
       </NetworkProvider>
     </ErrorBoundary>
   )
+
+  if (IS_HOSTED) {
+    return (
+      <AuthProvider>
+        <AuthGate>{core}</AuthGate>
+      </AuthProvider>
+    )
+  }
+
+  return core
 }
 
 export default DashboardLayout;
