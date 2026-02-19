@@ -18,6 +18,7 @@ import {
   Plus,
   Fish
 } from 'lucide-react'
+import { WithdrawModal } from './WithdrawModal'
 import { WalletProvider } from '@/context/WalletContext'
 import { NetworkProvider, useNetwork } from '@/context/NetworkContext'
 import { ActiveTokensProvider } from '@/context/ActiveTokensContext'
@@ -192,6 +193,7 @@ function WalletButton() {
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [depositCopied, setDepositCopied] = useState(false);
+  const [showWithdraw, setShowWithdraw] = useState(false);
 
   useEffect(() => {
     const checkWallet = async () => {
@@ -315,8 +317,7 @@ function WalletButton() {
                 </button>
                 <button
                   onClick={() => {
-                    window.history.pushState({}, '', '/wallets');
-                    window.dispatchEvent(new PopStateEvent('popstate'));
+                    setShowWithdraw(true);
                     setIsOpen(false);
                   }}
                   className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-800 rounded-lg text-left transition-colors"
@@ -388,6 +389,14 @@ function WalletButton() {
             </div>
           </>
         )}
+
+        {/* Withdraw Modal */}
+        <WithdrawModal
+          isOpen={showWithdraw}
+          onClose={() => setShowWithdraw(false)}
+          walletAddress={wallet.address}
+          walletBalance={wallet.balance}
+        />
       </div>
     );
   }
