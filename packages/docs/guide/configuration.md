@@ -22,6 +22,18 @@ Optional. Provides higher rate limits on the Jupiter Quote API. Get one at [stat
 
 Without a key, you'll use the public endpoint which works fine for occasional trading but may throttle during heavy volume operations.
 
+::: tip
+Hosted users don't need this — the managed Jupiter API key is provided automatically.
+:::
+
+### Helius API Key (Optional)
+
+For smart priority fee estimation based on real-time network congestion, add your Helius API key in Settings. This uses Helius's `getPriorityFeeEstimate` to automatically set optimal priority fees for each transaction.
+
+Get one at [helius.dev](https://helius.dev/) (free tier available).
+
+Without it, Jupiter's built-in `auto` priority fee is used instead, which works fine for most operations.
+
 ### Network Selection
 
 Toggle between **Mainnet** and **Devnet** via the badge in the header bar. This affects:

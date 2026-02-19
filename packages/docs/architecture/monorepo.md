@@ -5,16 +5,12 @@ TrenchTools uses a pnpm workspace with Turbo for build orchestration.
 ## Workspace Layout
 
 ```
-TrenchTools-OS/
+TrenchTools/
 ├── packages/
 │   ├── core/            # @trenchtools/core — TypeScript library
 │   ├── ui/              # @trenchtools/ui — React dashboard (main app)
 │   ├── docs/            # @trenchtools/docs — This documentation site
-│   ├── landing/         # Landing page (trenchtools.io)
-│   ├── bot/             # Bot package
-│   ├── bot-telegram/    # Telegram bot integration
-│   ├── cli/             # CLI tool
-│   └── snipe/           # Standalone sniper package
+│   └── landing/         # Landing page (trenchtools.io)
 ├── package.json         # Workspace root
 ├── pnpm-workspace.yaml  # Workspace definition
 ├── turbo.json           # Build pipeline config

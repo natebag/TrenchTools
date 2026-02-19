@@ -1,13 +1,32 @@
 # Getting Started
 
-## Prerequisites
+## Choose Your Setup
+
+### Option 1: Hosted (Zero Setup)
+
+Use the hosted version — no installation, no API keys, no configuration.
+
+1. Go to [app.trenchtools.io](https://app.trenchtools.io)
+2. Sign in with **Phantom wallet** or create an account with **email/password**
+3. Create your wallet vault password
+4. Generate wallets and start trading
+
+The hosted version provides managed RPC, Jupiter API, and Helius priority fees. A 0.5% fee per swap covers infrastructure costs. Your keys are encrypted in your browser and never sent to the server.
+
+---
+
+### Option 2: Self-Hosted (Free)
+
+Run TrenchTools locally on your machine. No fees, no accounts, full control.
+
+#### Prerequisites
 
 - **Node.js** >= 20.0.0
 - **pnpm** >= 9.0.0
 - A Solana RPC endpoint (Helius, QuickNode, or public RPC)
 - A Jupiter API key (optional, for higher rate limits)
 
-## Installation
+#### Installation
 
 ```bash
 # Clone the repository
@@ -23,15 +42,23 @@ pnpm start
 
 The dashboard will open at `http://localhost:5173`.
 
+---
+
 ## First-Time Setup
 
-### 1. Configure Your RPC
+These steps apply to both hosted and self-hosted.
+
+### 1. Configure Your RPC (Self-Hosted Only)
 
 Navigate to **Settings** (gear icon in sidebar) and enter your Solana RPC URL. The default public RPC works but has rate limits. For production use, get a dedicated endpoint from:
 
-- [Helius](https://helius.dev/) (recommended)
+- [Helius](https://helius.dev/) (recommended — also enables smart priority fees)
 - [QuickNode](https://quicknode.com/)
 - [Alchemy](https://alchemy.com/)
+
+::: tip
+Hosted users skip this step — a managed RPC is provided automatically.
+:::
 
 ### 2. Set Your Network
 
@@ -90,16 +117,12 @@ The production build outputs to `packages/ui/dist/` — a static site you can ho
 ## Project Structure
 
 ```
-TrenchTools-OS/
+TrenchTools/
 ├── packages/
 │   ├── core/          # TypeScript library (wallet, trading, P&L, shield)
 │   ├── ui/            # React dashboard (the main app)
 │   ├── docs/          # This documentation site
-│   ├── landing/       # Landing page (trenchtools.io)
-│   ├── bot/           # Bot package
-│   ├── bot-telegram/  # Telegram bot integration
-│   ├── cli/           # CLI tool
-│   └── snipe/         # Standalone sniper package
+│   └── landing/       # Landing page (trenchtools.io)
 ├── package.json       # Workspace root
 ├── pnpm-workspace.yaml
 └── turbo.json

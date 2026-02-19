@@ -1,94 +1,65 @@
 # Deployment
 
-## Deploying the Docs Site
+Most users should use the **hosted version** at [app.trenchtools.io](https://app.trenchtools.io) — no deployment needed. This guide is for self-hosting TrenchTools on your own infrastructure.
 
-The docs site (`packages/docs`) builds to static HTML using VitePress. It can be hosted on any static hosting provider.
+## Quick Start (Local)
 
-### Railway (Recommended)
-
-Since you're already hosting the landing page on Railway, the docs site fits naturally there too.
-
-#### Option 1: Nixpacks (Auto-detect)
-
-Railway auto-detects Node.js projects. Create a new Railway service pointed at the monorepo:
-
-1. Create a new service in your Railway project
-2. Connect your GitHub repo
-3. Set the **Root Directory** to `packages/docs`
-4. Set the **Build Command**: `npm install -g pnpm && pnpm install && pnpm build`
-5. Set the **Start Command**: `npx serve .vitepress/dist -l 3000`
-6. Add custom domain: `docs.trenchtools.io`
-
-#### Option 2: Dockerfile
-
-Create a `Dockerfile` in `packages/docs/`:
-
-```dockerfile
-FROM node:20-alpine AS build
-RUN npm install -g pnpm
-WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install
-COPY . .
-RUN pnpm build
-
-FROM nginx:alpine
-COPY --from=build /app/.vitepress/dist /usr/share/nginx/html
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
-```
-
-Then in Railway:
-1. Create a new service → Dockerfile
-2. Set root directory to `packages/docs`
-3. Railway builds and deploys the nginx container
-4. Add custom domain: `docs.trenchtools.io`
-
-#### Option 3: Static Site Deploy
+The simplest deployment is running locally:
 
 ```bash
-cd packages/docs
+git clone https://github.com/natebag/Trenchtools.git
+cd Trenchtools
 pnpm install
-pnpm build
-# Upload .vitepress/dist/ to Railway as a static site
+pnpm start
 ```
 
-### DNS Setup
+This runs the dashboard at `http://localhost:5173`. Your data stays in your browser's `localStorage`.
 
-Point `docs.trenchtools.io` to Railway:
-1. In Railway, add the custom domain to your docs service
-2. Railway provides a CNAME target (e.g., `xxx.up.railway.app`)
-3. In your DNS provider, add:
-   ```
-   CNAME  docs  →  xxx.up.railway.app
-   ```
-4. Wait for DNS propagation and SSL provisioning
+## Production Build
 
-### Alternative Hosts
-
-VitePress outputs static HTML, so it works on:
-- **Vercel**: Zero-config with framework detection
-- **Netlify**: Drop the `dist` folder or connect repo
-- **Cloudflare Pages**: Free, fast global CDN
-- **GitHub Pages**: Free for public repos
-
-## Deploying the UI
-
-The main dashboard (`packages/ui`) also builds to static files:
+Build the static UI for hosting:
 
 ```bash
 npx turbo run build --filter=@trenchtools/ui --force
 # Output: packages/ui/dist/
 ```
 
-This can be hosted the same way, but since TrenchTools is self-hosted by design, most users will run `pnpm start` locally.
+The `dist/` folder contains a fully static site (HTML + JS + CSS) that can be served by any web server or hosting provider.
+
+## Hosting Options
+
+Since the build output is static files, you can host it anywhere:
+
+| Provider | Setup | Cost |
+|----------|-------|------|
+| **Vercel** | Connect GitHub repo, zero config | Free |
+| **Netlify** | Drop `dist/` folder or connect repo | Free |
+| **Cloudflare Pages** | Connect repo, fast global CDN | Free |
+| **GitHub Pages** | Push to `gh-pages` branch | Free |
+| **Railway** | Connect repo, set build command | ~$5/mo |
+| **Your own server** | Serve `dist/` with nginx/caddy | Varies |
 
 ## Environment Variables
 
-For the docs site, no environment variables are needed — it's pure static content.
+The UI accepts optional environment variables via Vite:
 
-For the UI, if hosting publicly:
 ```env
-VITE_DEFAULT_RPC_URL=https://api.mainnet-beta.solana.com
+# Default RPC URL (falls back to public RPC if not set)
+VITE_DEFAULT_RPC_URL=https://mainnet.helius-rpc.com/?api-key=YOUR_KEY
+
+# Jupiter API key for higher rate limits (optional)
 VITE_JUPITER_API_KEY=your-key-here
 ```
+
+Create a `.env` file in `packages/ui/` before building, or set them in your hosting provider's environment settings.
+
+::: tip
+For the best experience self-hosting, use a dedicated RPC from [Helius](https://helius.dev/) or [QuickNode](https://quicknode.com/). Public RPCs have aggressive rate limits that cause failures during volume operations.
+:::
+
+## Security Notes
+
+- The static site runs entirely in the browser — no backend server required
+- All wallet keys are encrypted locally using AES-256-GCM
+- No data is sent to external servers (except RPC calls to Solana and DEX API calls)
+- HTTPS is recommended but not required for local use

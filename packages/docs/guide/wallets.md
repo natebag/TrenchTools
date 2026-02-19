@@ -12,13 +12,17 @@ The wallet system is the foundation of TrenchTools. All trading, volume, and bot
 
 ## Vault Encryption
 
-Wallets are encrypted at rest using:
+Wallets are encrypted at rest using the `useSecureWallet` hook and `BrowserWalletManager`:
 
-1. **Argon2** — Password is hashed with Argon2 to derive an encryption key
-2. **Web Crypto API** — AES-GCM encryption of the wallet data blob
+1. **Password → Key Derivation** — Your vault password is used to derive an AES-256 encryption key
+2. **AES-256-GCM** — The wallet data blob is encrypted via Web Crypto API
 3. **localStorage** — Encrypted blob stored in `trenchsniper_secure_wallets`
 
-The vault is locked by default. Unlocking requires the vault password, which decrypts all wallets into memory. The password is held in the singleton `BrowserWalletManager` instance while unlocked and cleared on lock.
+The vault is locked by default. Unlocking requires the vault password, which decrypts all wallets into memory. Call `getKeypairs()` to get the decrypted `Keypair[]` for trading operations. The password is held in the singleton `BrowserWalletManager` instance while unlocked and cleared on lock.
+
+### Hosted Mode Vault Sync
+
+When using the hosted version (app.trenchtools.io), the encrypted vault blob is synced to the server after save operations. This enables cross-device access — log in on a new device and your vault is available (you still need your vault password to decrypt). The server stores only the encrypted blob and can never read your keys.
 
 ## Wallet Operations
 
