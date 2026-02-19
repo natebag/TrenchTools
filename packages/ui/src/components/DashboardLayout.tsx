@@ -191,6 +191,7 @@ function WalletButton() {
   const [allWallets, setAllWallets] = useState<Array<{ address: string; balance: number; name: string }>>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [depositCopied, setDepositCopied] = useState(false);
 
   useEffect(() => {
     const checkWallet = async () => {
@@ -299,21 +300,36 @@ function WalletButton() {
               {/* Actions */}
               <div className="p-2">
                 <button
-                  onClick={() => { window.location.href = '/wallets'; setIsOpen(false); }}
+                  onClick={() => {
+                    if (wallet) {
+                      navigator.clipboard.writeText(wallet.address);
+                      setDepositCopied(true);
+                      setTimeout(() => setDepositCopied(false), 2000);
+                    }
+                  }}
                   className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-800 rounded-lg text-left transition-colors"
                 >
                   <ArrowDown className="w-4 h-4 text-emerald-400" />
-                  <span className="text-sm">Deposit</span>
+                  <span className="text-sm">{depositCopied ? 'Address Copied!' : 'Deposit'}</span>
+                  {depositCopied && <span className="ml-auto text-xs text-emerald-400">copied</span>}
                 </button>
                 <button
-                  onClick={() => { window.location.href = '/wallets'; setIsOpen(false); }}
+                  onClick={() => {
+                    window.history.pushState({}, '', '/wallets');
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                    setIsOpen(false);
+                  }}
                   className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-800 rounded-lg text-left transition-colors"
                 >
                   <ArrowUp className="w-4 h-4 text-blue-400" />
                   <span className="text-sm">Withdraw</span>
                 </button>
                 <button
-                  onClick={() => { window.location.href = '/wallets'; setIsOpen(false); }}
+                  onClick={() => {
+                    window.history.pushState({}, '', '/wallets');
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                    setIsOpen(false);
+                  }}
                   className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-800 rounded-lg text-left transition-colors"
                 >
                   <RefreshCw className="w-4 h-4 text-purple-400" />
@@ -358,7 +374,11 @@ function WalletButton() {
               {/* Add account */}
               <div className="border-t border-slate-800 p-2">
                 <button
-                  onClick={() => { window.location.href = '/wallets'; setIsOpen(false); }}
+                  onClick={() => {
+                    window.history.pushState({}, '', '/wallets');
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                    setIsOpen(false);
+                  }}
                   className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-800 rounded-lg text-left transition-colors"
                 >
                   <Plus className="w-4 h-4 text-slate-400" />
@@ -373,9 +393,12 @@ function WalletButton() {
   }
 
   return (
-    <button 
+    <button
       className="btn-primary text-sm"
-      onClick={() => window.location.href = '/wallets'}
+      onClick={() => {
+        window.history.pushState({}, '', '/wallets');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }}
     >
       Connect Wallet
     </button>
