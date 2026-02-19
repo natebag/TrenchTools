@@ -25,6 +25,14 @@ You can run up to **6 bot groups simultaneously**.
    - **Intensity**: low, medium, high, or aggressive
 4. Click **Create**
 
+### Inline Editing
+
+While a bot is stopped, click any config value to edit it inline:
+- **Wallet Count**, **SOL Per Wallet**, **Pattern**, **Intensity**
+- **Min/Max swap amount** and **Min/Max interval**
+
+Changes are saved immediately — no need to delete and recreate the group.
+
 ### Advanced Settings
 Expand the Advanced section to override:
 - Min/Max swap amount in SOL
@@ -38,7 +46,7 @@ When you click Start on a bot group:
 1. **Validates** your vault is unlocked and treasury has enough SOL
 2. **Generates** the specified number of burner wallets (named `BotName-W1`, `BotName-W2`, etc.)
 3. **Funds** each wallet from your treasury with the configured SOL amount
-4. **Starts trading** — the volume engine begins executing swaps through the bot's wallets
+4. **Starts parallel trading** — each wallet independently executes swaps simultaneously, maximizing organic-looking activity across multiple accounts
 
 ### RUNNING
 While running, the bot card shows:
@@ -79,6 +87,10 @@ Expand any bot card to see its recent trades:
 - Which wallet executed it
 - Time ago
 - Clickable Solscan link to the transaction
+
+## Active Bots Dashboard Card
+
+The Dashboard displays a live **Active Bots** card showing all running bot groups at a glance — status, swap count, volume, and uptime. Click through to manage individual bots without navigating to the Market Making tab.
 
 ## Bot Wallets in Treasury
 

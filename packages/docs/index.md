@@ -9,7 +9,10 @@ hero:
   tagline: Open-source market making and trading toolkit for Solana. Snipe. Boost. Dominate.
   actions:
     - theme: brand
-      text: Get Started
+      text: Launch App
+      link: https://app.trenchtools.io
+    - theme: alt
+      text: Self-Host (Free)
       link: /guide/getting-started
     - theme: alt
       text: View on GitHub
@@ -42,19 +45,25 @@ features:
     details: Powered by Allium. Detect wallet clustering, wash trading, coordinated timing, and interval regularity patterns.
 ---
 
-## Why TrenchTools?
+## Two Ways to Use TrenchTools
 
-Most Solana trading tools are either paid bots with revenue shares, closed-source black boxes, or half-finished scripts on GitHub. TrenchTools is different:
+### Hosted — Zero Setup
+Use the hosted version at [app.trenchtools.io](https://app.trenchtools.io) with zero setup. Sign in with Phantom wallet or email, and start trading immediately. Just 0.5% per swap to cover infrastructure costs.
 
-- **Free & Open Source** — MIT licensed, audit the code yourself
-- **Self-Hosted** — Runs on your machine, your keys never leave your browser
-- **Multi-DEX** — Jupiter, PumpFun (PumpPortal API), with Raydium and Meteora coming
-- **Real Dashboard** — Not a CLI script — a full React UI with real-time state
-- **Battle-Tested** — Every feature makes real trades on mainnet
+### Self-Hosted — Free Forever
+Clone the repo and run it locally. Your keys never leave your browser. No fees, no accounts, no limits.
 
 ```bash
 git clone https://github.com/natebag/Trenchtools.git
-cd Trenchtools
-pnpm install
-pnpm start
+cd Trenchtools && pnpm install && pnpm start
 ```
+
+## Why TrenchTools?
+
+Most Solana trading tools are paid bots with revenue shares, closed-source black boxes, or half-finished scripts. TrenchTools is different:
+
+- **Free & Open Source** — MIT licensed, audit the code yourself
+- **Non-Custodial** — Your keys are encrypted in your browser, never sent to any server
+- **Multi-DEX** — Jupiter (aggregator) and PumpFun (PumpPortal API) fully implemented
+- **Real Dashboard** — Not a CLI script — a full React UI with real-time charts, P&L, and wallet management
+- **Battle-Tested** — Every feature executes real on-chain transactions on mainnet
