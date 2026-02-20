@@ -32,6 +32,10 @@ Send SOL from your treasury wallet to multiple sub-wallets at once.
 3. Click Fund All
 4. Each transfer is a separate on-chain transaction
 
+::: tip Stealth Mode
+Enable **Stealth Funding** in Settings to route each transfer through [ChangeNow](https://changenow.io). Each wallet gets funded from an unrelated on-chain source — invisible on Bubblemaps and Arkham. Adds ~2-10 min per wallet + ~0.55% fee. See [Stealth Funding](/features/stealth-funding) for details.
+:::
+
 ### Bulk Sweep
 Collect all SOL from sub-wallets back to your treasury.
 1. Select wallets to sweep

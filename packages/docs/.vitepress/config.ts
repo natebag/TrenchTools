@@ -65,6 +65,7 @@ export default defineConfig({
             { text: 'Market Making', link: '/features/volume' },
             { text: 'Bot Groups', link: '/features/bot-groups' },
             { text: 'Treasury & Wallets', link: '/features/treasury' },
+            { text: 'Stealth Funding', link: '/features/stealth-funding' },
             { text: 'P&L Analytics', link: '/features/pnl' },
             { text: 'Shield Scanner', link: '/features/shield' },
             { text: 'Whale Alerts', link: '/features/whale-alerts' },
