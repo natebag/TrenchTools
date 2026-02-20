@@ -226,6 +226,26 @@ export const pumpfunSwapper: DexSwapper = {
         maxRetries: 3,
       });
 
+      // Confirmation check — poll for on-chain status before returning success
+      let txConfirmed = false;
+      for (let i = 0; i < 8; i++) {
+        await new Promise(r => setTimeout(r, 2500));
+        const statusResp = await connection.getSignatureStatuses([signature]);
+        const status = statusResp.value[0];
+        if (status) {
+          if (status.err) {
+            throw new Error(`Transaction failed on-chain: ${JSON.stringify(status.err)}`);
+          }
+          if (status.confirmationStatus === 'confirmed' || status.confirmationStatus === 'finalized') {
+            txConfirmed = true;
+            break;
+          }
+        }
+      }
+      if (!txConfirmed) {
+        throw new Error(`Transaction not confirmed after 20s (sig: ${signature.slice(0, 20)}...). May have been dropped.`);
+      }
+
       return {
         success: true,
         txHash: signature,
