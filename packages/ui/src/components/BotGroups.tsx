@@ -725,8 +725,44 @@ export function BotGroups() {
       }
     }
 
-    // 3. Sweep SOL to treasury
+    // 3. Verify on-chain: which wallets are actually empty (safe to delete)?
+    //    Wallets that still hold tokens keep their keys so they can be retried via Clean Up.
+    const safeToDelete: string[] = []
+    const keptWallets: string[] = []
+
     for (const walletId of runtime.walletIds) {
+      const wallet = wallets.find(w => w.id === walletId)
+      if (!wallet) {
+        safeToDelete.push(walletId) // can't find wallet metadata, safe to prune
+        continue
+      }
+
+      try {
+        const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+          new PublicKey(wallet.address),
+          { programId: SPL_TOKEN_PROGRAM_ID }
+        )
+        const remainingTokens = tokenAccounts.value.filter(a => {
+          const info = a.account.data.parsed.info
+          return BigInt(info.tokenAmount.amount) > 0n && info.mint !== WSOL_MINT
+        })
+
+        if (remainingTokens.length === 0) {
+          safeToDelete.push(walletId)
+        } else {
+          keptWallets.push(walletId)
+          console.warn(`[BotGroups] Wallet ${wallet.address} still holds ${remainingTokens.length} token(s) — keeping keys`)
+        }
+      } catch (err) {
+        // Can't verify balance — keep wallet to be safe
+        keptWallets.push(walletId)
+        console.error(`[BotGroups] Failed to verify ${wallet.address}, keeping keys:`, err)
+      }
+    }
+
+    // 4. Sweep SOL to treasury (only from verified-empty wallets)
+    //    Wallets with remaining tokens keep their SOL for future sell tx fees.
+    for (const walletId of safeToDelete) {
       const wallet = wallets.find(w => w.id === walletId)
       const signer = allKeypairs.find(kp => kp.publicKey.toBase58() === wallet?.address)
       if (!wallet || !signer) {
@@ -763,37 +799,43 @@ export function BotGroups() {
       }
     }
 
-    // 4. Delete wallets from vault
+    // 5. Delete only verified-empty wallets from vault
+    //    Wallets with remaining tokens stay in vault for Clean Up.
     try {
-      if (runtime.walletIds.length > 0) {
-        await removeWallets(runtime.walletIds, pw)
+      if (safeToDelete.length > 0) {
+        await removeWallets(safeToDelete, pw)
         walletsDeleted = true
-        console.log(`[BotGroups] Deleted ${runtime.walletIds.length} bot wallets from vault`)
-      } else {
+        console.log(`[BotGroups] Deleted ${safeToDelete.length}/${walletCount} bot wallets from vault`)
+      } else if (keptWallets.length === 0) {
         walletsDeleted = true // nothing to delete
       }
     } catch (err) {
       console.error('[BotGroups] Failed to delete bot wallets:', err)
     }
 
-    // 5. Reset runtime
+    if (keptWallets.length > 0) {
+      console.warn(`[BotGroups] Kept ${keptWallets.length} wallet(s) with remaining tokens — use Clean Up to retry`)
+    }
+
+    // 6. Reset runtime — preserve kept wallets so Clean Up can find them
     setRuntime(botId, {
       status: 'idle',
-      walletIds: [],
+      walletIds: keptWallets,
       stats: { swapsExecuted: 0, totalVolumeSol: 0, startedAt: null },
-      error: null,
+      error: keptWallets.length > 0 ? `${keptWallets.length} wallet(s) still hold unsold tokens` : null,
     })
 
-    // 6. Build accurate feedback message
+    // 7. Build accurate feedback message
     const parts: string[] = [`${config.name} stopped.`]
     if (tokensSold > 0) parts.push(`${tokensSold} token(s) sold.`)
     if (sellErrors > 0) parts.push(`${sellErrors} sell error(s).`)
     if (walletsSwept > 0 && sweepErrors === 0) parts.push('SOL swept.')
-    else if (sweepErrors > 0) parts.push(`Sweep: ${walletsSwept}/${walletCount} ok, ${sweepErrors} failed.`)
-    if (walletsDeleted) parts.push('Wallets deleted.')
-    else parts.push('Wallet deletion failed — use Clean Up.')
+    else if (sweepErrors > 0) parts.push(`Sweep: ${walletsSwept}/${safeToDelete.length} ok, ${sweepErrors} failed.`)
+    if (safeToDelete.length > 0 && walletsDeleted) parts.push(`${safeToDelete.length} wallet(s) deleted.`)
+    if (keptWallets.length > 0) parts.push(`${keptWallets.length} wallet(s) kept (unsold tokens) — use Clean Up.`)
+    else if (!walletsDeleted && keptWallets.length === 0) parts.push('Wallet deletion failed — use Clean Up.')
 
-    const hasErrors = sellErrors > 0 || sweepErrors > 0 || !walletsDeleted
+    const hasErrors = sellErrors > 0 || sweepErrors > 0 || keptWallets.length > 0
     setFeedback({ type: hasErrors ? 'error' : 'success', message: parts.join(' ') })
   }, [configs, getRuntime, setRuntime, wallets, getKeypairs, rpcUrl, getPassword, removeWallets, jupiterApiKey, addTrade])
 
@@ -941,50 +983,101 @@ export function BotGroups() {
         console.error(`[BotGroups] cleanup token scan failed on ${wallet.address}:`, err)
       }
 
-      // Sweep SOL
-      if (treasuryWallet) {
-        try {
-          const lamports = await connection.getBalance(signer.publicKey)
-          const sweepLamports = lamports - 5000
-          if (sweepLamports > 0) {
-            const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed')
-            const tx = new Transaction().add(
-              SystemProgram.transfer({
-                fromPubkey: signer.publicKey,
-                toPubkey: new PublicKey(treasuryWallet.address),
-                lamports: sweepLamports,
-              })
-            )
-            tx.recentBlockhash = blockhash
-            tx.feePayer = signer.publicKey
-            tx.sign(signer)
-            const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false, maxRetries: 3 })
-            await confirmTx(connection, sig, blockhash, lastValidBlockHeight)
-            walletsSwept++
-          } else {
-            walletsSwept++
-          }
-        } catch (err) {
-          sweepErrors++
-          console.error(`[BotGroups] cleanup sweep failed on ${wallet.address}:`, err)
+    }
+
+    // Verify on-chain: which orphaned wallets are actually empty?
+    const safeToDelete: string[] = []
+    const keptOrphans: string[] = []
+
+    for (const walletId of orphanIds) {
+      const wallet = wallets.find(w => w.id === walletId)
+      if (!wallet) {
+        safeToDelete.push(walletId)
+        continue
+      }
+
+      try {
+        const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+          new PublicKey(wallet.address),
+          { programId: SPL_TOKEN_PROGRAM_ID }
+        )
+        const remainingTokens = tokenAccounts.value.filter(a => {
+          const info = a.account.data.parsed.info
+          return BigInt(info.tokenAmount.amount) > 0n && info.mint !== WSOL_MINT
+        })
+
+        if (remainingTokens.length === 0) {
+          safeToDelete.push(walletId)
+        } else {
+          keptOrphans.push(walletId)
+          console.warn(`[BotGroups] cleanup: wallet ${wallet.address} still holds ${remainingTokens.length} token(s) — keeping keys`)
         }
+      } catch (err) {
+        keptOrphans.push(walletId)
+        console.error(`[BotGroups] cleanup: failed to verify ${wallet.address}, keeping keys:`, err)
       }
     }
 
-    // Delete orphaned wallets
+    // Sweep SOL only from verified-empty wallets
+    for (const walletId of safeToDelete) {
+      const wallet = wallets.find(w => w.id === walletId)
+      const signer = allKeypairs.find(kp => kp.publicKey.toBase58() === wallet?.address)
+      if (!wallet || !signer || !treasuryWallet) {
+        sweepErrors++
+        continue
+      }
+
+      try {
+        const lamports = await connection.getBalance(signer.publicKey)
+        const sweepLamports = lamports - 5000
+        if (sweepLamports > 0) {
+          const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed')
+          const tx = new Transaction().add(
+            SystemProgram.transfer({
+              fromPubkey: signer.publicKey,
+              toPubkey: new PublicKey(treasuryWallet.address),
+              lamports: sweepLamports,
+            })
+          )
+          tx.recentBlockhash = blockhash
+          tx.feePayer = signer.publicKey
+          tx.sign(signer)
+          const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false, maxRetries: 3 })
+          await confirmTx(connection, sig, blockhash, lastValidBlockHeight)
+          walletsSwept++
+        } else {
+          walletsSwept++
+        }
+      } catch (err) {
+        sweepErrors++
+        console.error(`[BotGroups] cleanup sweep failed on ${wallet.address}:`, err)
+      }
+    }
+
+    // Delete only verified-empty orphaned wallets
     try {
-      await removeWallets(orphanIds, pw)
-      walletsDeleted = true
+      if (safeToDelete.length > 0) {
+        await removeWallets(safeToDelete, pw)
+        walletsDeleted = true
+      }
     } catch (err) {
       console.error('[BotGroups] cleanup: failed to delete wallets:', err)
     }
 
-    setRuntime(botId, { status: 'idle', walletIds: [], stats: { swapsExecuted: 0, totalVolumeSol: 0, startedAt: null }, error: null })
+    setRuntime(botId, {
+      status: 'idle',
+      walletIds: keptOrphans,
+      stats: { swapsExecuted: 0, totalVolumeSol: 0, startedAt: null },
+      error: keptOrphans.length > 0 ? `${keptOrphans.length} wallet(s) still hold unsold tokens` : null,
+    })
 
-    const parts: string[] = [`Cleaned up ${orphanIds.length} orphaned wallets from ${config.name}.`]
-    if (sweepErrors > 0) parts.push(`Sweep: ${walletsSwept}/${orphanIds.length} ok.`)
-    if (!walletsDeleted) parts.push('Wallet deletion failed.')
-    const hasErrors = sweepErrors > 0 || !walletsDeleted
+    const parts: string[] = [`Cleaned up orphaned wallets from ${config.name}.`]
+    if (safeToDelete.length > 0 && walletsDeleted) parts.push(`${safeToDelete.length} wallet(s) deleted.`)
+    if (walletsSwept > 0) parts.push('SOL swept.')
+    if (sweepErrors > 0) parts.push(`Sweep: ${walletsSwept}/${safeToDelete.length} ok.`)
+    if (keptOrphans.length > 0) parts.push(`${keptOrphans.length} wallet(s) kept (unsold tokens) — retry Clean Up.`)
+    if (!walletsDeleted && safeToDelete.length > 0) parts.push('Wallet deletion failed.')
+    const hasErrors = sweepErrors > 0 || !walletsDeleted || keptOrphans.length > 0
     setFeedback({ type: hasErrors ? 'error' : 'success', message: parts.join(' ') })
   }, [configs, getOrphanedWalletIds, wallets, getKeypairs, rpcUrl, getPassword, removeWallets, setRuntime, jupiterApiKey])
 
