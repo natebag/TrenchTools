@@ -32,6 +32,8 @@ import {
 } from 'lucide-react';
 import { useSecureWallet } from '@/hooks/useSecureWallet';
 import { useNetwork } from '@/context/NetworkContext';
+import { isStealthEnabled, isHoudiniAvailable } from '@/lib/houdini';
+import { useStealthFund, type StealthDestination } from '@/hooks/useStealthFund';
 import { useTxHistory } from '@/context/TxHistoryContext';
 import { getQuote as dexGetQuote, executeSwap as dexExecuteSwap, type DexConfig } from '@/lib/dex';
 import { Connection, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL, ParsedTransactionWithMeta, VersionedTransaction } from '@solana/web3.js';
@@ -114,6 +116,7 @@ export function TreasuryWalletManager() {
     getKeypairs,
   } = useSecureWallet({ rpcUrl });
   const { addTrade } = useTxHistory();
+  const { state: stealthState, fundStealth, cancelAll: cancelStealth } = useStealthFund(rpcUrl);
 
   // UI State
   const [error, setError] = useState<string | null>(null);
@@ -1092,9 +1095,30 @@ export function TreasuryWalletManager() {
     try {
       const keypairs = getKeypairs();
       const treasuryKeypair = keypairs.find(kp => kp.publicKey.toBase58() === treasuryWallet.address);
-      
+
       if (!treasuryKeypair) {
         throw new Error('Treasury keypair not found. Is vault unlocked?');
+      }
+
+      // Stealth funding via Houdini (if enabled and available)
+      if (isStealthEnabled() && isHoudiniAvailable()) {
+        const destinations: StealthDestination[] = [{
+          address: targetWallet.address,
+          label: targetWallet.name,
+          amountSol,
+        }];
+        await fundStealth(treasuryKeypair, destinations, () => {
+          showSuccess(`Stealth funded ${amountSol} SOL to ${targetWallet.name}!`);
+          setTimeout(() => {
+            Promise.all([refreshBalances(), refreshAllWalletHoldings()]);
+          }, 2000);
+          setTimeout(() => {
+            setShowFundModal(false);
+            setFundTarget(null);
+            setFundAmount('0.01');
+          }, 3000);
+        });
+        return;
       }
 
       const connection = new Connection(rpcUrl, 'confirmed');
@@ -1119,7 +1143,7 @@ export function TreasuryWalletManager() {
 
       setFundTxHash(signature);
       showSuccess(`Funded ${amountSol} SOL to ${targetWallet.name}!`);
-      
+
       // Refresh balances after a short delay
       setTimeout(() => {
         Promise.all([refreshBalances(), refreshAllWalletHoldings()]);
@@ -1138,7 +1162,7 @@ export function TreasuryWalletManager() {
     } finally {
       setIsFunding(false);
     }
-  }, [fundTarget, fundAmount, treasuryWallet, wallets, getKeypairs, rpcUrl, refreshBalances, refreshAllWalletHoldings, showSuccess]);
+  }, [fundTarget, fundAmount, treasuryWallet, wallets, getKeypairs, rpcUrl, refreshBalances, refreshAllWalletHoldings, showSuccess, fundStealth]);
 
   // Bulk fund selected (or all) sub-wallets from treasury
   const handleBulkFund = useCallback(async () => {
@@ -1177,6 +1201,22 @@ export function TreasuryWalletManager() {
         throw new Error('Treasury keypair not found. Is vault unlocked?');
       }
 
+      // Stealth funding via Houdini (if enabled and available)
+      if (isStealthEnabled() && isHoudiniAvailable()) {
+        const destinations: StealthDestination[] = targetWallets.map(w => ({
+          address: w.address,
+          label: w.name,
+          amountSol: amountPerWallet,
+        }));
+        await fundStealth(treasuryKeypair, destinations, () => {
+          showSuccess(`Stealth funded ${targetWallets.length} wallets with ${amountPerWallet.toFixed(4)} SOL each!`);
+          setTimeout(() => {
+            Promise.all([refreshBalances(), refreshAllWalletHoldings()]);
+          }, 2000);
+        });
+        return;
+      }
+
       const connection = new Connection(rpcUrl, 'confirmed');
       const { blockhash } = await connection.getLatestBlockhash();
 
@@ -1211,7 +1251,7 @@ export function TreasuryWalletManager() {
     } finally {
       setIsBulkFunding(false);
     }
-  }, [treasuryWallet, subWallets, selectedWalletIds, bulkFundAmount, getKeypairs, rpcUrl, refreshBalances, refreshAllWalletHoldings, showSuccess]);
+  }, [treasuryWallet, subWallets, selectedWalletIds, bulkFundAmount, getKeypairs, rpcUrl, refreshBalances, refreshAllWalletHoldings, showSuccess, fundStealth]);
 
   // Sweep selected (or all) sub-wallets back to treasury
   const handleBulkSweep = useCallback(async () => {
@@ -1746,6 +1786,39 @@ export function TreasuryWalletManager() {
               </p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Stealth Funding Progress */}
+      {stealthState.isFunding && stealthState.exchanges.length > 0 && (
+        <div className="card p-4 border border-emerald-500/30 bg-emerald-500/5">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-medium text-emerald-400">Stealth Funding in Progress</h4>
+            <button
+              onClick={cancelStealth}
+              className="px-2 py-1 text-xs bg-red-600/20 text-red-400 hover:bg-red-600/30 rounded"
+            >
+              Cancel
+            </button>
+          </div>
+          <div className="space-y-2">
+            {stealthState.exchanges.map((ex, i) => (
+              <div key={i} className="flex items-center justify-between text-xs">
+                <span className="text-slate-300 truncate max-w-[120px]">{ex.label}</span>
+                <span className={
+                  ex.error ? 'text-red-400' :
+                  ex.status === 4 ? 'text-emerald-400' :
+                  'text-amber-400'
+                }>
+                  {ex.error || ex.statusLabel}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 text-xs text-slate-500">
+            {stealthState.completedCount}/{stealthState.exchanges.length} completed
+            {stealthState.failedCount > 0 && ` • ${stealthState.failedCount} failed`}
+          </div>
         </div>
       )}
 

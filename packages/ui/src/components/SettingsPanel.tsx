@@ -19,6 +19,10 @@ export function SettingsPanel() {
   const [jupiterSaved, setJupiterSaved] = useState(false);
   const [heliusKey, setHeliusKey] = useState(() => localStorage.getItem('helius_api_key') || '');
   const [heliusSaved, setHeliusSaved] = useState(false);
+  const [houdiniKey, setHoudiniKey] = useState(() => localStorage.getItem('houdini_api_key') || '');
+  const [houdiniSecret, setHoudiniSecret] = useState(() => localStorage.getItem('houdini_api_secret') || '');
+  const [houdiniSaved, setHoudiniSaved] = useState(false);
+  const [stealthEnabled, setStealthEnabled] = useState(() => localStorage.getItem('trench_stealth_funding') === 'true');
 
   useEffect(() => {
     setRpcInput(customRpcUrl ?? '');
@@ -238,6 +242,91 @@ export function SettingsPanel() {
               </button>
             </div>
             {heliusSaved && <p className="text-xs text-emerald-400 mt-2">Helius API key saved.</p>}
+          </div>
+
+          <div className="pt-4 border-t border-slate-700">
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Houdini API Key <span className="text-slate-500 font-normal">(for stealth funding)</span>
+            </label>
+            <input
+              type="password"
+              value={houdiniKey}
+              onChange={(e) => {
+                setHoudiniKey(e.target.value);
+                setHoudiniSaved(false);
+              }}
+              placeholder="Enter your Houdini API key..."
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-slate-100"
+            />
+            <label className="block text-sm font-medium text-slate-300 mb-2 mt-3">
+              Houdini API Secret
+            </label>
+            <input
+              type="password"
+              value={houdiniSecret}
+              onChange={(e) => {
+                setHoudiniSecret(e.target.value);
+                setHoudiniSaved(false);
+              }}
+              placeholder="Enter your Houdini API secret..."
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-slate-100"
+            />
+            <p className="text-xs text-slate-500 mt-1">
+              Enables stealth wallet funding that breaks on-chain clustering. Get API access at{' '}
+              <a href="https://houdiniswap.com" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+                houdiniswap.com
+              </a>
+            </p>
+            <div className="mt-3">
+              <button
+                onClick={() => {
+                  if (houdiniKey.trim()) {
+                    localStorage.setItem('houdini_api_key', houdiniKey.trim());
+                  } else {
+                    localStorage.removeItem('houdini_api_key');
+                  }
+                  if (houdiniSecret.trim()) {
+                    localStorage.setItem('houdini_api_secret', houdiniSecret.trim());
+                  } else {
+                    localStorage.removeItem('houdini_api_secret');
+                  }
+                  setHoudiniSaved(true);
+                }}
+                className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-medium text-white"
+              >
+                Save Houdini Keys
+              </button>
+            </div>
+            {houdiniSaved && <p className="text-xs text-emerald-400 mt-2">Houdini API keys saved.</p>}
+          </div>
+        </div>
+      </div>
+
+      {/* Stealth Funding Toggle */}
+      <div className="card">
+        <div className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-medium text-white">Stealth Funding</h3>
+              <p className="text-sm text-slate-400 mt-1">
+                Route wallet funding through Houdini Swap to break on-chain clustering.
+                Adds ~2-10 min per wallet + small fee.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                const next = !stealthEnabled;
+                setStealthEnabled(next);
+                localStorage.setItem('trench_stealth_funding', String(next));
+              }}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                stealthEnabled
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+              }`}
+            >
+              {stealthEnabled ? 'ON' : 'OFF'}
+            </button>
           </div>
         </div>
       </div>

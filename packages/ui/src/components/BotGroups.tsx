@@ -23,6 +23,8 @@ import {
 } from 'lucide-react'
 import { useSecureWallet } from '@/hooks/useSecureWallet'
 import { useNetwork } from '@/context/NetworkContext'
+import { isStealthEnabled, isHoudiniAvailable } from '@/lib/houdini'
+import { useStealthFund } from '@/hooks/useStealthFund'
 import { useActiveTokens } from '@/context/ActiveTokensContext'
 import { useTxHistory } from '@/context/TxHistoryContext'
 import {
@@ -135,6 +137,7 @@ export function BotGroups() {
   const { wallets, isLocked, getKeypairs, getPassword, generateWallets, removeWallets } = useSecureWallet({ rpcUrl })
   const { addToken } = useActiveTokens()
   const { addTrade, trades } = useTxHistory()
+  const { fundStealth } = useStealthFund(rpcUrl)
 
   // Config state (persisted)
   const [configs, setConfigs] = useState<BotGroupConfig[]>(() => loadBotConfigs())
@@ -500,26 +503,36 @@ export function BotGroups() {
       const treasuryKeypair = keypairs.find(kp => kp.publicKey.toBase58() === treasuryWallet.address)
       if (!treasuryKeypair) throw new Error('Treasury keypair not found')
 
-      const connection = new Connection(rpcUrl, 'confirmed')
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed')
+      if (isStealthEnabled() && isHoudiniAvailable()) {
+        // Stealth funding via Houdini — breaks on-chain clustering
+        const destinations = newWallets.map(w => ({
+          address: w.address,
+          label: w.name,
+          amountSol: config.solPerWallet,
+        }))
+        await fundStealth(treasuryKeypair, destinations)
+      } else {
+        const connection = new Connection(rpcUrl, 'confirmed')
+        const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed')
 
-      const fundTx = new Transaction()
-      fundTx.recentBlockhash = blockhash
-      fundTx.feePayer = treasuryKeypair.publicKey
+        const fundTx = new Transaction()
+        fundTx.recentBlockhash = blockhash
+        fundTx.feePayer = treasuryKeypair.publicKey
 
-      for (const w of newWallets) {
-        fundTx.add(
-          SystemProgram.transfer({
-            fromPubkey: treasuryKeypair.publicKey,
-            toPubkey: new PublicKey(w.address),
-            lamports: Math.floor(config.solPerWallet * LAMPORTS_PER_SOL),
-          })
-        )
+        for (const w of newWallets) {
+          fundTx.add(
+            SystemProgram.transfer({
+              fromPubkey: treasuryKeypair.publicKey,
+              toPubkey: new PublicKey(w.address),
+              lamports: Math.floor(config.solPerWallet * LAMPORTS_PER_SOL),
+            })
+          )
+        }
+
+        fundTx.sign(treasuryKeypair)
+        const sig = await connection.sendRawTransaction(fundTx.serialize(), { skipPreflight: false, maxRetries: 3 })
+        await confirmTx(connection, sig, blockhash, lastValidBlockHeight)
       }
-
-      fundTx.sign(treasuryKeypair)
-      const sig = await connection.sendRawTransaction(fundTx.serialize(), { skipPreflight: false, maxRetries: 3 })
-      await confirmTx(connection, sig, blockhash, lastValidBlockHeight)
 
       // 3. Start parallel trade loops
       addToken({ mint: config.targetToken, source: 'volume' })
@@ -547,7 +560,7 @@ export function BotGroups() {
       setRuntime(botId, { status: 'error', error: (err as Error).message })
       setFeedback({ type: 'error', message: (err as Error).message })
     }
-  }, [configs, isLocked, getPassword, wallets, getKeypairs, rpcUrl, generateWallets, setRuntime, addToken, executeBotTrade])
+  }, [configs, isLocked, getPassword, wallets, getKeypairs, rpcUrl, generateWallets, setRuntime, addToken, executeBotTrade, fundStealth])
 
   // ── STOP lifecycle ─────────────────────────────────────────
 
