@@ -23,7 +23,7 @@ import {
 } from 'lucide-react'
 import { useSecureWallet } from '@/hooks/useSecureWallet'
 import { useNetwork } from '@/context/NetworkContext'
-import { isStealthEnabled, isHoudiniAvailable } from '@/lib/houdini'
+import { isStealthEnabled, isStealthAvailable } from '@/lib/changenow'
 import { useStealthFund } from '@/hooks/useStealthFund'
 import { useActiveTokens } from '@/context/ActiveTokensContext'
 import { useTxHistory } from '@/context/TxHistoryContext'
@@ -503,8 +503,8 @@ export function BotGroups() {
       const treasuryKeypair = keypairs.find(kp => kp.publicKey.toBase58() === treasuryWallet.address)
       if (!treasuryKeypair) throw new Error('Treasury keypair not found')
 
-      if (isStealthEnabled() && isHoudiniAvailable()) {
-        // Stealth funding via Houdini — breaks on-chain clustering
+      if (isStealthEnabled() && isStealthAvailable()) {
+        // Stealth funding via ChangeNow — breaks on-chain clustering
         const destinations = newWallets.map(w => ({
           address: w.address,
           label: w.name,

@@ -19,9 +19,8 @@ export function SettingsPanel() {
   const [jupiterSaved, setJupiterSaved] = useState(false);
   const [heliusKey, setHeliusKey] = useState(() => localStorage.getItem('helius_api_key') || '');
   const [heliusSaved, setHeliusSaved] = useState(false);
-  const [houdiniKey, setHoudiniKey] = useState(() => localStorage.getItem('houdini_api_key') || '');
-  const [houdiniSecret, setHoudiniSecret] = useState(() => localStorage.getItem('houdini_api_secret') || '');
-  const [houdiniSaved, setHoudiniSaved] = useState(false);
+  const [changeNowKey, setChangeNowKey] = useState(() => localStorage.getItem('changenow_api_key') || '');
+  const [changeNowSaved, setChangeNowSaved] = useState(false);
   const [stealthEnabled, setStealthEnabled] = useState(() => localStorage.getItem('trench_stealth_funding') === 'true');
 
   useEffect(() => {
@@ -246,58 +245,40 @@ export function SettingsPanel() {
 
           <div className="pt-4 border-t border-slate-700">
             <label className="block text-sm font-medium text-slate-300 mb-2">
-              Houdini API Key <span className="text-slate-500 font-normal">(for stealth funding)</span>
+              ChangeNow API Key <span className="text-slate-500 font-normal">(for stealth funding)</span>
             </label>
             <input
               type="password"
-              value={houdiniKey}
+              value={changeNowKey}
               onChange={(e) => {
-                setHoudiniKey(e.target.value);
-                setHoudiniSaved(false);
+                setChangeNowKey(e.target.value);
+                setChangeNowSaved(false);
               }}
-              placeholder="Enter your Houdini API key..."
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-slate-100"
-            />
-            <label className="block text-sm font-medium text-slate-300 mb-2 mt-3">
-              Houdini API Secret
-            </label>
-            <input
-              type="password"
-              value={houdiniSecret}
-              onChange={(e) => {
-                setHoudiniSecret(e.target.value);
-                setHoudiniSaved(false);
-              }}
-              placeholder="Enter your Houdini API secret..."
+              placeholder="Enter your ChangeNow API key..."
               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-slate-100"
             />
             <p className="text-xs text-slate-500 mt-1">
-              Enables stealth wallet funding that breaks on-chain clustering. Get API credentials via{' '}
-              <a href="https://docs.houdiniswap.com/houdini-swap/contact-us/partnership-enquiries" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
-                Houdini Swap partnerships
+              Enables stealth wallet funding that breaks on-chain clustering. Get a free API key at{' '}
+              <a href="https://changenow.io/affiliate" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+                changenow.io/affiliate
               </a>
             </p>
             <div className="mt-3">
               <button
                 onClick={() => {
-                  if (houdiniKey.trim()) {
-                    localStorage.setItem('houdini_api_key', houdiniKey.trim());
+                  if (changeNowKey.trim()) {
+                    localStorage.setItem('changenow_api_key', changeNowKey.trim());
                   } else {
-                    localStorage.removeItem('houdini_api_key');
+                    localStorage.removeItem('changenow_api_key');
                   }
-                  if (houdiniSecret.trim()) {
-                    localStorage.setItem('houdini_api_secret', houdiniSecret.trim());
-                  } else {
-                    localStorage.removeItem('houdini_api_secret');
-                  }
-                  setHoudiniSaved(true);
+                  setChangeNowSaved(true);
                 }}
                 className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-medium text-white"
               >
-                Save Houdini Keys
+                Save ChangeNow Key
               </button>
             </div>
-            {houdiniSaved && <p className="text-xs text-emerald-400 mt-2">Houdini API keys saved.</p>}
+            {changeNowSaved && <p className="text-xs text-emerald-400 mt-2">ChangeNow API key saved.</p>}
           </div>
         </div>
       </div>
@@ -309,7 +290,7 @@ export function SettingsPanel() {
             <div>
               <h3 className="text-lg font-medium text-white">Stealth Funding</h3>
               <p className="text-sm text-slate-400 mt-1">
-                Route wallet funding through Houdini Swap to break on-chain clustering.
+                Route wallet funding through ChangeNow to break on-chain clustering.
                 Adds ~2-10 min per wallet + small fee.
               </p>
             </div>

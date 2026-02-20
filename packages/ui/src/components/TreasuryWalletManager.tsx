@@ -32,7 +32,7 @@ import {
 } from 'lucide-react';
 import { useSecureWallet } from '@/hooks/useSecureWallet';
 import { useNetwork } from '@/context/NetworkContext';
-import { isStealthEnabled, isHoudiniAvailable } from '@/lib/houdini';
+import { isStealthEnabled, isStealthAvailable } from '@/lib/changenow';
 import { useStealthFund, type StealthDestination } from '@/hooks/useStealthFund';
 import { useTxHistory } from '@/context/TxHistoryContext';
 import { getQuote as dexGetQuote, executeSwap as dexExecuteSwap, type DexConfig } from '@/lib/dex';
@@ -1100,8 +1100,8 @@ export function TreasuryWalletManager() {
         throw new Error('Treasury keypair not found. Is vault unlocked?');
       }
 
-      // Stealth funding via Houdini (if enabled and available)
-      if (isStealthEnabled() && isHoudiniAvailable()) {
+      // Stealth funding via ChangeNow (if enabled and available)
+      if (isStealthEnabled() && isStealthAvailable()) {
         const destinations: StealthDestination[] = [{
           address: targetWallet.address,
           label: targetWallet.name,
@@ -1201,8 +1201,8 @@ export function TreasuryWalletManager() {
         throw new Error('Treasury keypair not found. Is vault unlocked?');
       }
 
-      // Stealth funding via Houdini (if enabled and available)
-      if (isStealthEnabled() && isHoudiniAvailable()) {
+      // Stealth funding via ChangeNow (if enabled and available)
+      if (isStealthEnabled() && isStealthAvailable()) {
         const destinations: StealthDestination[] = targetWallets.map(w => ({
           address: w.address,
           label: w.name,
@@ -1807,7 +1807,7 @@ export function TreasuryWalletManager() {
                 <span className="text-slate-300 truncate max-w-[120px]">{ex.label}</span>
                 <span className={
                   ex.error ? 'text-red-400' :
-                  ex.status === 4 ? 'text-emerald-400' :
+                  ex.status === 'finished' ? 'text-emerald-400' :
                   'text-amber-400'
                 }>
                   {ex.error || ex.statusLabel}
