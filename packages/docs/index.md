@@ -40,6 +40,9 @@ features:
   - icon: 🐋
     title: Whale Alerts
     details: Monitor large wallet movements and whale activity on tokens you're tracking.
+  - icon: 🫥
+    title: Stealth Funding
+    details: Break on-chain wallet clustering with ChangeNow. Each sub-wallet gets funded from an unrelated source — invisible on Bubblemaps and Arkham.
   - icon: 🔍
     title: Manipulation Detection
     details: Powered by Allium. Detect wallet clustering, wash trading, coordinated timing, and interval regularity patterns.

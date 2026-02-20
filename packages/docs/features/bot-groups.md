@@ -46,6 +46,7 @@ When you click Start on a bot group:
 1. **Validates** your vault is unlocked and treasury has enough SOL
 2. **Generates** the specified number of burner wallets (named `BotName-W1`, `BotName-W2`, etc.)
 3. **Funds** each wallet from your treasury with the configured SOL amount
+   - If [Stealth Funding](/features/stealth-funding) is enabled, each wallet is funded through ChangeNow (adds ~2-10 min but breaks clustering)
 4. **Starts parallel trading** — each wallet independently executes swaps simultaneously, maximizing organic-looking activity across multiple accounts
 
 ### RUNNING
