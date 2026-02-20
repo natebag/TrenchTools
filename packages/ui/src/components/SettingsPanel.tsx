@@ -22,6 +22,7 @@ export function SettingsPanel() {
   const [changeNowKey, setChangeNowKey] = useState(() => localStorage.getItem('changenow_api_key') || '');
   const [changeNowSaved, setChangeNowSaved] = useState(false);
   const [stealthEnabled, setStealthEnabled] = useState(() => localStorage.getItem('trench_stealth_funding') === 'true');
+  const [ghostHolders, setGhostHolders] = useState(() => localStorage.getItem('trench_ghost_holders') === 'true');
 
   useEffect(() => {
     setRpcInput(customRpcUrl ?? '');
@@ -312,13 +313,41 @@ export function SettingsPanel() {
         </div>
       </div>
 
+      {/* Ghost Holders Toggle */}
+      <div className="card">
+        <div className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-medium text-white">Ghost Holders</h3>
+              <p className="text-sm text-slate-400 mt-1">
+                Leave 1 token dust in bot wallets on stop so they still appear as holders on-chain.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                const next = !ghostHolders;
+                setGhostHolders(next);
+                localStorage.setItem('trench_ghost_holders', String(next));
+              }}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                ghostHolders
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  : 'bg-slate-700 hover:bg-slate-600 text-slate-300'
+              }`}
+            >
+              {ghostHolders ? 'ON' : 'OFF'}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className="card">
         <div className="p-6">
           <h3 className="text-lg font-medium text-white mb-4">Danger Zone</h3>
           <p className="text-slate-400 text-sm mb-4">
             Clear all local data including encrypted wallets. This cannot be undone.
           </p>
-          <button 
+          <button
             onClick={() => {
               if (confirm('Are you sure? This will delete all wallets and settings.')) {
                 localStorage.clear();

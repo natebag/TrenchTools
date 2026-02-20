@@ -60,7 +60,7 @@ While running, the bot card shows:
 When you click Stop:
 
 1. **Stops** the trade loop
-2. **Sells all tokens** on each bot wallet (Jupiter → PumpFun fallback)
+2. **Sells all tokens** on each bot wallet (Jupiter → PumpFun fallback). If [Ghost Holders](#ghost-holders) is enabled, leaves 1 token dust per wallet.
 3. **Sweeps SOL** from each wallet back to treasury (balance minus fee reserve)
 4. **Deletes** the burner wallets from your vault
 5. Reports actual results (how many wallets swept, tokens sold, etc.)
@@ -69,6 +69,19 @@ When you click Stop:
 The stop process reports exactly what happened:
 - "3 tokens sold, 5 wallets swept, 5 wallets deleted"
 - If any step fails, you'll see: "2/5 wallets swept (3 failed)"
+
+## Ghost Holders
+
+When **Ghost Holders** is enabled in Settings, stopping a bot group sells all tokens _except 1_ on each wallet. The wallets still appear as "holders" on DexScreener, Birdeye, and block explorers — even after the bot stops and SOL is swept back to treasury.
+
+This prevents the visible holder-count drop that happens when bots sell 100% and exit.
+
+- **Toggle**: Settings → Ghost Holders → ON/OFF
+- **Dust amount**: 1 token (in human-readable units) left per wallet
+- **SOL sweep**: Still happens — only token dust remains
+- **Wallet cleanup**: Wallet keys are deleted from your vault; the on-chain token account persists with dust
+
+Ghost Holders applies to both normal Stop and Orphan Recovery Clean Up.
 
 ## Orphan Recovery
 

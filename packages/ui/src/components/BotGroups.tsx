@@ -604,6 +604,7 @@ export function BotGroups() {
     let sweepErrors = 0
     let walletsDeleted = false
     const walletCount = runtime.walletIds.length
+    const ghostHolders = localStorage.getItem('trench_ghost_holders') === 'true'
 
     console.log(`[BotGroups] stopBot ${config.name}: ${walletCount} walletIds, password present: ${!!pw}`)
 
@@ -639,12 +640,17 @@ export function BotGroups() {
           .filter(h => BigInt(h.amountRaw) > 0n && h.mint !== WSOL_MINT)
 
         for (const token of holdings) {
+          const fullAmount = parseInt(token.amountRaw)
+          const dust = Math.pow(10, token.decimals)
+          const sellAmount = ghostHolders ? Math.max(0, fullAmount - dust) : fullAmount
+          if (sellAmount <= 0) continue
+
           try {
             // Try Jupiter first
             const quoteUrl = `${JUPITER_API_URL}/quote?` + new URLSearchParams({
               inputMint: token.mint,
               outputMint: WSOL_MINT,
-              amount: token.amountRaw,
+              amount: String(sellAmount),
               slippageBps: '200',
             })
             const quoteResponse = await fetch(quoteUrl, {
@@ -695,7 +701,7 @@ export function BotGroups() {
             // Fallback: PumpFun sell
             try {
               const pfConfig: DexConfig = { rpcUrl, slippageBps: 200, heliusApiKey: heliusApiKey || undefined }
-              const pfQuote = await dexGetQuote('pumpfun', token.mint, WSOL_MINT, parseInt(token.amountRaw), pfConfig)
+              const pfQuote = await dexGetQuote('pumpfun', token.mint, WSOL_MINT, sellAmount, pfConfig)
               const pfResult = await dexExecuteSwap(pfQuote, signer, pfConfig)
               if (pfResult.success) {
                 tokensSold++
@@ -744,7 +750,10 @@ export function BotGroups() {
         )
         const remainingTokens = tokenAccounts.value.filter(a => {
           const info = a.account.data.parsed.info
-          return BigInt(info.tokenAmount.amount) > 0n && info.mint !== WSOL_MINT
+          if (info.mint === WSOL_MINT) return false
+          const bal = BigInt(info.tokenAmount.amount)
+          if (ghostHolders) return bal > 10n ** BigInt(info.tokenAmount.decimals)
+          return bal > 0n
         })
 
         if (remainingTokens.length === 0) {
@@ -902,6 +911,7 @@ export function BotGroups() {
     let walletsSwept = 0
     let sweepErrors = 0
     let walletsDeleted = false
+    const ghostHolders = localStorage.getItem('trench_ghost_holders') === 'true'
 
     // Sell tokens + sweep SOL for each orphaned wallet
     for (const walletId of orphanIds) {
@@ -933,9 +943,14 @@ export function BotGroups() {
           .filter(h => BigInt(h.amountRaw) > 0n && h.mint !== WSOL_MINT)
 
         for (const token of holdings) {
+          const fullAmount = parseInt(token.amountRaw)
+          const dust = Math.pow(10, token.decimals)
+          const sellAmount = ghostHolders ? Math.max(0, fullAmount - dust) : fullAmount
+          if (sellAmount <= 0) continue
+
           try {
             const pfConfig: DexConfig = { rpcUrl, slippageBps: 200, heliusApiKey: heliusApiKey || undefined }
-            const pfQuote = await dexGetQuote('pumpfun', token.mint, WSOL_MINT, parseInt(token.amountRaw), pfConfig)
+            const pfQuote = await dexGetQuote('pumpfun', token.mint, WSOL_MINT, sellAmount, pfConfig)
             const pfResult = await dexExecuteSwap(pfQuote, signer, pfConfig)
             if (!pfResult.success) throw new Error('PumpFun sell failed')
           } catch {
@@ -943,7 +958,7 @@ export function BotGroups() {
               const quoteUrl = `${JUPITER_API_URL}/quote?` + new URLSearchParams({
                 inputMint: token.mint,
                 outputMint: WSOL_MINT,
-                amount: token.amountRaw,
+                amount: String(sellAmount),
                 slippageBps: '200',
               })
               const quoteResponse = await fetch(quoteUrl, {
@@ -1003,7 +1018,10 @@ export function BotGroups() {
         )
         const remainingTokens = tokenAccounts.value.filter(a => {
           const info = a.account.data.parsed.info
-          return BigInt(info.tokenAmount.amount) > 0n && info.mint !== WSOL_MINT
+          if (info.mint === WSOL_MINT) return false
+          const bal = BigInt(info.tokenAmount.amount)
+          if (ghostHolders) return bal > 10n ** BigInt(info.tokenAmount.decimals)
+          return bal > 0n
         })
 
         if (remainingTokens.length === 0) {
