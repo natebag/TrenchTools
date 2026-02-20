@@ -272,9 +272,9 @@ export function SettingsPanel() {
               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-slate-100"
             />
             <p className="text-xs text-slate-500 mt-1">
-              Enables stealth wallet funding that breaks on-chain clustering. Get API access at{' '}
-              <a href="https://houdiniswap.com" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
-                houdiniswap.com
+              Enables stealth wallet funding that breaks on-chain clustering. Get your API key at{' '}
+              <a href="https://houdiniswap.com/get-api-access" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+                houdiniswap.com/get-api-access
               </a>
             </p>
             <div className="mt-3">
