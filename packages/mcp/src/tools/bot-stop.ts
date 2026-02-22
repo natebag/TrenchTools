@@ -14,6 +14,7 @@ import {
   removeWallets,
 } from '../vault.js';
 import { detectDex, getQuote, executeSwap } from '../lib/dex/index.js';
+import { getLaunchWalletAddresses, getLaunchesForWallet } from '../lib/pumpfun-launch.js';
 import { KNOWN_MINTS } from '../lib/dex/types.js';
 import type { DexConfig } from '../lib/dex/types.js';
 import { getSessionsByType, stopSession, removeSession } from '../lib/sessions.js';
@@ -177,9 +178,34 @@ export async function handler(args: ToolInput, config: MCPConfig) {
     }
   }
 
-  // 3. Remove bot wallets from vault
+  // 3. Protect launch wallets from deletion (creator fees would be lost forever)
+  const launchAddresses = await getLaunchWalletAddresses();
+  const protectedAddrs: string[] = [];
+  const deletableAddrs: string[] = [];
+  for (const addr of session.walletAddresses) {
+    if (launchAddresses.has(addr)) {
+      protectedAddrs.push(addr);
+    } else {
+      deletableAddrs.push(addr);
+    }
+  }
+
+  if (protectedAddrs.length > 0) {
+    details.push('');
+    details.push('  ⚠ Launch wallets PROTECTED from deletion (creator fees):');
+    for (const addr of protectedAddrs) {
+      const truncated = addr.slice(0, 4) + '...' + addr.slice(-4);
+      const launches = await getLaunchesForWallet(addr);
+      const tokens = launches.map(l => `${l.name} ($${l.symbol})`).join(', ');
+      details.push(`    ${truncated}: ${tokens}`);
+    }
+  }
+
+  // Remove only non-launch bot wallets from vault
   try {
-    await removeWallets(config, session.walletAddresses);
+    if (deletableAddrs.length > 0) {
+      await removeWallets(config, deletableAddrs);
+    }
   } catch {
     details.push('  Warning: failed to remove bot wallets from vault');
   }
@@ -196,7 +222,10 @@ export async function handler(args: ToolInput, config: MCPConfig) {
   lines.push(`  SOL recovered: ${solRecovered.toFixed(4)} SOL`);
   lines.push(`  Total trades executed: ${stats.tradesExecuted}`);
   lines.push(`  Total volume: ${stats.volumeSol.toFixed(4)} SOL`);
-  lines.push(`  Bot wallets removed: ${session.walletAddresses.length}`);
+  lines.push(`  Bot wallets removed: ${deletableAddrs.length}`);
+  if (protectedAddrs.length > 0) {
+    lines.push(`  Launch wallets protected: ${protectedAddrs.length} (creator fees preserved)`);
+  }
   lines.push('');
   lines.push('Details:');
   lines.push(...details);

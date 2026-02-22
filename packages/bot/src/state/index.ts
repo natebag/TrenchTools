@@ -23,6 +23,14 @@ export interface BoostState {
   stats: BoostStats;
 }
 
+export interface LaunchHistoryEntry {
+  mintAddress: string;
+  name: string;
+  symbol: string;
+  txHash: string;
+  timestamp: number;
+}
+
 export interface AppState {
   boost: BoostState;
   wallets: WalletInfo[];
@@ -33,6 +41,7 @@ export interface AppState {
     successRate: number;
     solSpent: number;
   };
+  launches: LaunchHistoryEntry[];
 }
 
 // Mock data for demonstration
@@ -65,6 +74,7 @@ class StateManager {
       successRate: 94.2,
       solSpent: 12.34,
     },
+    launches: [],
   };
 
   private alertCallbacks: ((message: string) => void)[] = [];
@@ -143,6 +153,15 @@ class StateManager {
       message: 'Boost session stopped',
       stats: finalStats 
     };
+  }
+
+  addLaunch(entry: LaunchHistoryEntry): void {
+    this.state.launches.unshift(entry);
+    if (this.state.launches.length > 100) this.state.launches.pop();
+  }
+
+  getLaunches(): LaunchHistoryEntry[] {
+    return [...this.state.launches];
   }
 
   onAlert(callback: (message: string) => void): void {

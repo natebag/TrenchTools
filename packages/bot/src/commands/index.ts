@@ -4,3 +4,5 @@ export { startBoostCommand, stopBoostCommand } from './boost.js';
 export { walletsCommand } from './wallets.js';
 export { statsCommand } from './stats.js';
 export { alertsCommand } from './alerts.js';
+export { launchCommand, handleLaunchMessage, activeWizards } from './launch.js';
+export { claimFeesCommand } from './claim.js';

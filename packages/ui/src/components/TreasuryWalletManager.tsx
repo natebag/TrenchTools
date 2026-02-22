@@ -36,6 +36,7 @@ import { isStealthEnabled, isStealthAvailable } from '@/lib/changenow';
 import { useStealthFund, type StealthDestination } from '@/hooks/useStealthFund';
 import { useTxHistory } from '@/context/TxHistoryContext';
 import { getQuote as dexGetQuote, executeSwap as dexExecuteSwap, type DexConfig } from '@/lib/dex';
+import { isLaunchWallet, getLaunchesForWallet } from '@/lib/launchWalletGuard';
 import { Connection, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL, ParsedTransactionWithMeta, VersionedTransaction } from '@solana/web3.js';
 
 // Transaction history types
@@ -1396,6 +1397,19 @@ export function TreasuryWalletManager() {
     if (!wallet) {
       setError('Wallet not found');
       return;
+    }
+
+    // Guard: warn if this wallet launched a token (creator fees will be lost forever)
+    if (isLaunchWallet(wallet.address)) {
+      const launches = getLaunchesForWallet(wallet.address);
+      const tokenList = launches.map(l => `${l.name} ($${l.symbol})`).join(', ');
+      const confirmed = window.confirm(
+        `⚠️ WARNING: This wallet launched ${launches.length} token(s): ${tokenList}\n\n` +
+        `Deleting this wallet will PERMANENTLY destroy the private key.\n` +
+        `You will NEVER be able to claim creator fees for these tokens again.\n\n` +
+        `Are you absolutely sure you want to delete this wallet?`
+      );
+      if (!confirmed) return;
     }
 
     setError(null);
