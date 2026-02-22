@@ -6,8 +6,7 @@ Works with Claude Desktop, Cursor, VS Code, Cline, Windsurf, and any MCP-compati
 
 ## Quick Start
 
-1. Get an API key from [trenchtools.io](https://trenchtools.io) (Settings > API Keys)
-2. Add to your AI client config:
+Add to your AI client config — just one env variable:
 
 ### Claude Desktop
 
@@ -20,7 +19,6 @@ Edit `claude_desktop_config.json`:
       "command": "npx",
       "args": ["-y", "trenchsniper-mcp"],
       "env": {
-        "TRENCH_API_KEY": "trench_sk_your_key_here",
         "TRENCH_VAULT_PASSWORD": "your-secure-password"
       }
     }
@@ -32,13 +30,12 @@ Edit `claude_desktop_config.json`:
 
 Same JSON format — paste into MCP settings.
 
-That's it. The server connects to TrenchTools infrastructure automatically. No RPC URL or Jupiter keys needed.
+That's it. The server connects to TrenchTools infrastructure automatically. No RPC URL, no API keys, no account needed. 0.5% fee per swap.
 
 ## Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `TRENCH_API_KEY` | Yes | - | API key from your TrenchTools dashboard |
 | `TRENCH_VAULT_PASSWORD` | Yes | - | Wallet vault encryption password (min 8 chars) |
 | `TRENCH_VAULT_PATH` | No | `~/.trenchsniper/vault.json` | Wallet vault file location |
 | `TRENCH_SLIPPAGE_BPS` | No | `500` | Default slippage (500 = 5%) |
@@ -46,7 +43,7 @@ That's it. The server connects to TrenchTools infrastructure automatically. No R
 
 ### Self-Hosting
 
-To run fully self-hosted (your own RPC, no fees), see the [Self-Hosting Guide](https://github.com/0xTrench/TrenchSniper-OS/blob/main/packages/mcp/SELF_HOSTING.md).
+To run fully self-hosted (your own RPC, no fees), see the [Self-Hosting Guide](./SELF_HOSTING.md).
 
 ## Tools (20)
 
