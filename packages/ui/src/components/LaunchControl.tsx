@@ -33,6 +33,18 @@ import {
 import { useSecureWallet } from '@/hooks/useSecureWallet';
 import { useNetwork } from '@/context/NetworkContext';
 import { useToast } from './Toast';
+import {
+  type ChainId,
+  ACTIVE_CHAIN_IDS,
+  CHAINS,
+  hasFeature,
+  toCaip2,
+  toCaip10,
+  createPrint,
+  type PrintrTokenMetadata,
+  type PrintrChainConfig,
+  type PrintrCreator,
+} from '@trenchtools/core';
 
 // ============ Types ============
 
@@ -44,6 +56,7 @@ interface LaunchHistoryEntry {
   txHash: string;
   initialBuySol: number;
   timestamp: number;
+  chain?: ChainId;
 }
 
 // ============ Constants ============
@@ -82,6 +95,14 @@ export function LaunchControl() {
   const { rpcUrl } = useNetwork();
   const { wallets, getKeypairs, isLocked } = useSecureWallet({ rpcUrl });
   const toast = useToast();
+
+  // Launch chain — can differ from global chain selector
+  const [launchChain, setLaunchChain] = useState<ChainId>('solana');
+  const isPrintrLaunch = launchChain !== 'solana';
+
+  // --- Printr-specific state ---
+  const [graduationThreshold, setGraduationThreshold] = useState<69000 | 250000>(69000);
+  const [initialBuyPercent, setInitialBuyPercent] = useState('0');
 
   // --- Token Launch Form State ---
   const [name, setName] = useState('');
@@ -201,6 +222,119 @@ export function LaunchControl() {
     setLaunchResult(null);
 
     try {
+      // ── Printr launch path (BSC / Base) ──
+      if (isPrintrLaunch) {
+        const jwtToken = localStorage.getItem('printr_jwt') || '';
+        if (!jwtToken) {
+          throw new Error('Printr JWT token not configured. Add it in Settings → API Keys.');
+        }
+
+        // Convert image to base64 (Printr requires base64, max 500KB)
+        const imageBuffer = await imageFile.arrayBuffer();
+        if (imageBuffer.byteLength > 500 * 1024) {
+          throw new Error('Image must be under 500KB for Printr launch. Compress and retry.');
+        }
+        const base64Image = btoa(
+          new Uint8Array(imageBuffer).reduce((s, b) => s + String.fromCharCode(b), ''),
+        );
+
+        const metadata: PrintrTokenMetadata = {
+          name: name.trim(),
+          symbol: symbol.trim(),
+          description: description.trim(),
+          image: base64Image,
+          links: {
+            ...(twitter.trim() ? { twitter: twitter.trim() } : {}),
+            ...(telegram.trim() ? { telegram: telegram.trim() } : {}),
+            ...(website.trim() ? { website: website.trim() } : {}),
+          },
+        };
+
+        const chainCfg: PrintrChainConfig[] = [{
+          chainId: toCaip2(launchChain),
+          ...(parseFloat(initialBuyPercent) > 0 ? { initialBuyPercent: parseFloat(initialBuyPercent) } : {}),
+          graduationThreshold,
+        }];
+
+        const creators: PrintrCreator[] = [{
+          chainId: toCaip2(launchChain),
+          accountId: toCaip10(launchChain, selectedWallet),
+        }];
+
+        // Call Printr API
+        const result = await createPrint(metadata, chainCfg, creators, jwtToken);
+
+        const chainResult = result.perChain[0];
+        if (!chainResult) {
+          throw new Error('Printr returned no chain result. Please try again.');
+        }
+
+        // Sign + broadcast the EVM transaction
+        const { createWalletClient, createPublicClient, http } = await import('viem');
+        const { privateKeyToAccount } = await import('viem/accounts');
+        const viemChains = await import('viem/chains');
+
+        const evmChain = launchChain === 'bsc' ? viemChains.bsc : viemChains.base;
+        const chainConfig = CHAINS[launchChain];
+
+        // Get the EVM private key for the selected wallet
+        // For now, expect it stored as hex in the wallet data
+        const walletData = wallets.find(w => w.address === selectedWallet);
+        if (!walletData) throw new Error('Wallet not found');
+
+        // Reconstruct the private key hex from the keypair's secret
+        const kpBytes = creatorKp.secretKey;
+        const privateKeyHex = `0x${Array.from(kpBytes).map(b => b.toString(16).padStart(2, '0')).join('')}` as `0x${string}`;
+
+        const account = privateKeyToAccount(privateKeyHex);
+        const evmRpcUrl = localStorage.getItem(`trench_rpc_${launchChain}`) || chainConfig.defaultRpcUrl;
+
+        const publicClient = createPublicClient({
+          chain: evmChain,
+          transport: http(evmRpcUrl),
+        });
+
+        const walletClient = createWalletClient({
+          account,
+          chain: evmChain,
+          transport: http(evmRpcUrl),
+        });
+
+        const txHash = await walletClient.sendTransaction({
+          to: chainResult.to as `0x${string}`,
+          data: chainResult.transactionCalldata as `0x${string}`,
+          value: 0n,
+        });
+
+        // Wait for confirmation
+        const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+        if (receipt.status === 'reverted') {
+          throw new Error('Printr launch transaction reverted on-chain.');
+        }
+
+        // Save to history
+        const mintAddress = chainResult.contractAddress;
+        const newEntry: LaunchHistoryEntry = {
+          mintAddress,
+          name: name.trim(),
+          symbol: symbol.trim(),
+          creatorWallet: selectedWallet,
+          txHash,
+          initialBuySol: 0,
+          timestamp: Date.now(),
+          chain: launchChain,
+        };
+        const updatedHistory = [newEntry, ...history].slice(0, MAX_HISTORY);
+        setHistory(updatedHistory);
+        saveLaunchHistory(updatedHistory);
+
+        setLaunchResult({ mintAddress, txHash });
+        toast.success('Token Launched!', `${name} (${symbol}) created on ${chainConfig.name} via Printr.`);
+        return;
+      }
+
+      // ── PumpFun launch path (Solana) ──
+
       // 1. Read image file
       const imageBuffer = await imageFile.arrayBuffer();
 
@@ -339,6 +473,7 @@ export function LaunchControl() {
         txHash,
         initialBuySol: parseFloat(initialBuySol) || 0,
         timestamp: Date.now(),
+        chain: 'solana',
       };
       const updatedHistory = [newEntry, ...history].slice(0, MAX_HISTORY);
       setHistory(updatedHistory);
@@ -359,7 +494,8 @@ export function LaunchControl() {
   }, [
     name, symbol, description, imageFile, selectedWallet, initialBuySol,
     slippagePct, priorityFee, twitter, telegram, website,
-    getKeypairs, rpcUrl, history, toast,
+    getKeypairs, rpcUrl, history, toast, isPrintrLaunch, launchChain,
+    initialBuyPercent, graduationThreshold, wallets,
   ]);
 
   // --- Claim Creator Fees ---
@@ -466,8 +602,14 @@ export function LaunchControl() {
           <Rocket className="w-6 h-6 text-emerald-500" />
           Launch Control
         </h1>
-        <div className="px-3 py-1 rounded-full text-sm font-medium bg-purple-500/20 text-purple-400">
-          PumpFun
+        <div
+          className={`px-3 py-1 rounded-full text-sm font-medium ${
+            isPrintrLaunch
+              ? 'bg-blue-500/20 text-blue-400'
+              : 'bg-purple-500/20 text-purple-400'
+          }`}
+        >
+          {isPrintrLaunch ? `Printr · ${CHAINS[launchChain].name}` : 'PumpFun'}
         </div>
       </div>
 
@@ -502,23 +644,25 @@ export function LaunchControl() {
               {copiedField === 'mint' && <span className="text-xs text-emerald-400">Copied!</span>}
             </div>
             <div className="flex items-center gap-3 mt-2">
+              {!isPrintrLaunch && (
+                <a
+                  href={`https://pump.fun/${launchResult.mintAddress}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 text-sm text-purple-400 hover:text-purple-300 transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  pump.fun
+                </a>
+              )}
               <a
-                href={`https://pump.fun/${launchResult.mintAddress}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 text-sm text-purple-400 hover:text-purple-300 transition-colors"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                pump.fun
-              </a>
-              <a
-                href={`https://solscan.io/tx/${launchResult.txHash}`}
+                href={`${CHAINS[launchChain].explorerUrl}${CHAINS[launchChain].explorerTxPath}${launchResult.txHash}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 text-sm text-blue-400 hover:text-blue-300 transition-colors"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
-                Solscan
+                {launchChain === 'solana' ? 'Solscan' : launchChain === 'bsc' ? 'BscScan' : 'BaseScan'}
               </a>
             </div>
           </div>
@@ -548,6 +692,43 @@ export function LaunchControl() {
           </select>
           {isLocked && wallets.length === 0 && (
             <p className="text-xs text-yellow-400 mt-1">Unlock your vault to see wallets.</p>
+          )}
+        </div>
+
+        {/* Launch Chain Selector */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-400 mb-2">Launch Chain</label>
+          <div className="flex gap-2">
+            {ACTIVE_CHAIN_IDS.filter(c => hasFeature(c, 'launch')).map(c => {
+              const cfg = CHAINS[c];
+              const isActive = launchChain === c;
+              return (
+                <button
+                  key={c}
+                  onClick={() => setLaunchChain(c)}
+                  disabled={isLaunching}
+                  className={`
+                    flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all border
+                    ${isActive
+                      ? 'border-emerald-500/50 bg-emerald-500/10 text-white'
+                      : 'border-gray-600 bg-gray-900 text-gray-400 hover:border-gray-500 hover:text-gray-300'
+                    }
+                    disabled:opacity-50
+                  `}
+                >
+                  <span
+                    className="w-2.5 h-2.5 rounded-full"
+                    style={{ backgroundColor: cfg.color }}
+                  />
+                  {cfg.name}
+                </button>
+              );
+            })}
+          </div>
+          {isPrintrLaunch && (
+            <p className="text-xs text-blue-400 mt-1.5">
+              Powered by Printr — cross-chain token launch
+            </p>
           )}
         </div>
 
@@ -690,47 +871,79 @@ export function LaunchControl() {
           </div>
         </div>
 
-        {/* Trading Parameters */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-400 mb-2">Initial Buy (SOL)</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={initialBuySol}
-              onChange={(e) => setInitialBuySol(e.target.value)}
-              disabled={isLaunching}
-              className="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2.5 text-white text-sm focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
-            />
-            <p className="text-xs text-gray-500 mt-1">0 = no initial buy</p>
+        {/* Trading Parameters — chain-specific */}
+        {isPrintrLaunch ? (
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Initial Buy (% of supply)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="69"
+                value={initialBuyPercent}
+                onChange={(e) => setInitialBuyPercent(e.target.value)}
+                disabled={isLaunching}
+                className="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2.5 text-white text-sm focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+              />
+              <p className="text-xs text-gray-500 mt-1">0 = no initial buy · max 69%</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Graduation Threshold</label>
+              <select
+                value={graduationThreshold}
+                onChange={(e) => setGraduationThreshold(Number(e.target.value) as 69000 | 250000)}
+                disabled={isLaunching}
+                className="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-3 text-white text-sm focus:ring-2 focus:ring-blue-500 disabled:opacity-50 appearance-none"
+              >
+                <option value={69000}>$69K</option>
+                <option value={250000}>$250K</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">Market cap to graduate to DEX</p>
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-400 mb-2">Slippage (%)</label>
-            <input
-              type="number"
-              step="1"
-              min="1"
-              max="100"
-              value={slippagePct}
-              onChange={(e) => setSlippagePct(e.target.value)}
-              disabled={isLaunching}
-              className="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2.5 text-white text-sm focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
-            />
+        ) : (
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Initial Buy (SOL)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={initialBuySol}
+                onChange={(e) => setInitialBuySol(e.target.value)}
+                disabled={isLaunching}
+                className="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2.5 text-white text-sm focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
+              />
+              <p className="text-xs text-gray-500 mt-1">0 = no initial buy</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Slippage (%)</label>
+              <input
+                type="number"
+                step="1"
+                min="1"
+                max="100"
+                value={slippagePct}
+                onChange={(e) => setSlippagePct(e.target.value)}
+                disabled={isLaunching}
+                className="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2.5 text-white text-sm focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-400 mb-2">Priority Fee (SOL)</label>
+              <input
+                type="number"
+                step="0.0001"
+                min="0.0001"
+                value={priorityFee}
+                onChange={(e) => setPriorityFee(e.target.value)}
+                disabled={isLaunching}
+                className="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2.5 text-white text-sm focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
+              />
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-400 mb-2">Priority Fee (SOL)</label>
-            <input
-              type="number"
-              step="0.0001"
-              min="0.0001"
-              value={priorityFee}
-              onChange={(e) => setPriorityFee(e.target.value)}
-              disabled={isLaunching}
-              className="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2.5 text-white text-sm focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
-            />
-          </div>
-        </div>
+        )}
 
         {/* Launch Button */}
         <button
@@ -741,19 +954,19 @@ export function LaunchControl() {
           {isLaunching ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
-              Launching Token...
+              Launching on {CHAINS[launchChain].name}...
             </>
           ) : (
             <>
               <Rocket className="w-5 h-5" />
-              Launch Token
+              Launch on {CHAINS[launchChain].name}
             </>
           )}
         </button>
       </div>
 
-      {/* ===== Section 2: Claim Creator Fees ===== */}
-      <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+      {/* ===== Section 2: Claim Creator Fees (Solana/PumpFun only) ===== */}
+      {launchChain === 'solana' && <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
         <div className="flex items-center gap-2 mb-4">
           <Coins className="w-5 h-5 text-amber-500" />
           <h2 className="text-lg font-semibold text-white">Claim Creator Fees</h2>
@@ -797,7 +1010,7 @@ export function LaunchControl() {
             </>
           )}
         </button>
-      </div>
+      </div>}
 
       {/* ===== Section 3: Launch History ===== */}
       <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
@@ -857,28 +1070,37 @@ export function LaunchControl() {
                       </span>
                     </td>
                     <td className="py-3 px-3">
-                      <span className="text-gray-400 text-xs">
-                        {new Date(entry.timestamp).toLocaleDateString()}{' '}
-                        {new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
+                      <div className="flex flex-col">
+                        <span className="text-gray-400 text-xs">
+                          {new Date(entry.timestamp).toLocaleDateString()}{' '}
+                          {new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        {entry.chain && entry.chain !== 'solana' && (
+                          <span className="text-xs mt-0.5" style={{ color: CHAINS[entry.chain].color }}>
+                            {CHAINS[entry.chain].name}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3 px-3 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        {(!entry.chain || entry.chain === 'solana') && (
+                          <a
+                            href={`https://pump.fun/${entry.mintAddress}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-purple-400 hover:text-purple-300 transition-colors"
+                            title="View on pump.fun"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        )}
                         <a
-                          href={`https://pump.fun/${entry.mintAddress}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-purple-400 hover:text-purple-300 transition-colors"
-                          title="View on pump.fun"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </a>
-                        <a
-                          href={`https://solscan.io/tx/${entry.txHash}`}
+                          href={`${CHAINS[entry.chain || 'solana'].explorerUrl}${CHAINS[entry.chain || 'solana'].explorerTxPath}${entry.txHash}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-blue-400 hover:text-blue-300 transition-colors"
-                          title="View on Solscan"
+                          title="View on explorer"
                         >
                           <ExternalLink className="w-3.5 h-3.5" />
                         </a>

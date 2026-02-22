@@ -22,6 +22,8 @@ import {
 import { WithdrawModal } from './WithdrawModal'
 import { WalletProvider } from '@/context/WalletContext'
 import { NetworkProvider, useNetwork } from '@/context/NetworkContext'
+import { ChainProvider, useChain } from '@/context/ChainContext'
+import { ChainSelector } from './ChainSelector'
 import { ActiveTokensProvider } from '@/context/ActiveTokensContext'
 import { TxHistoryProvider } from '@/context/TxHistoryContext'
 import { PnLProvider } from '@/context/PnLContext'
@@ -190,7 +192,8 @@ function NetworkSwitcher() {
 }
 
 function WalletButton() {
-  const { rpcUrl, network } = useNetwork();
+  const { rpcUrl } = useNetwork();
+  const { nativeToken, explorerUrl } = useChain();
   const [wallet, setWallet] = useState<{ address: string; balance: number; name?: string } | null>(null);
   const [allWallets, setAllWallets] = useState<Array<{ address: string; balance: number; name: string }>>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -264,7 +267,7 @@ function WalletButton() {
             {wallet.address.slice(0, 4)}...{wallet.address.slice(-4)}
           </span>
           <span className="text-emerald-400 font-medium">
-            {isLoading ? '...' : `${wallet.balance.toFixed(3)} SOL`}
+            {isLoading ? '...' : `${wallet.balance.toFixed(3)} ${nativeToken}`}
           </span>
         </button>
 
@@ -296,7 +299,7 @@ function WalletButton() {
                   <div>
                     <p className="text-sm text-slate-400">{wallet.name || 'Main Wallet'}</p>
                     <p className="text-lg font-bold text-white">
-                      {isLoading ? '...' : `${wallet.balance.toFixed(4)} SOL`}
+                      {isLoading ? '...' : `${wallet.balance.toFixed(4)} ${nativeToken}`}
                     </p>
                   </div>
                 </div>
@@ -340,7 +343,7 @@ function WalletButton() {
                   <span className="text-sm">Transfer funds</span>
                 </button>
                 <a
-                  href={`https://solscan.io/account/${wallet.address}${network === 'devnet' ? '?cluster=devnet' : ''}`}
+                  href={explorerUrl('address', wallet.address)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-800 rounded-lg text-left transition-colors"
@@ -368,7 +371,7 @@ function WalletButton() {
                       <div className="w-6 h-6 bg-slate-700 rounded" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm truncate">{w.name}</p>
-                        <p className="text-xs text-slate-500">{w.balance?.toFixed(3) || '0'} SOL</p>
+                        <p className="text-xs text-slate-500">{w.balance?.toFixed(3) || '0'} {nativeToken}</p>
                       </div>
                     </button>
                   ))}
@@ -436,6 +439,8 @@ function Header({ onMenuClick }: { onMenuClick: () => void }) {
       </div>
       
       <div className="flex items-center gap-4">
+        <ChainSelector />
+        <div className="w-px h-6 bg-slate-700 hidden sm:block" />
         <NetworkSwitcher />
         <div className="w-px h-6 bg-slate-700 hidden sm:block" />
         <WalletButton />
@@ -514,21 +519,23 @@ function AppContent() {
 export function DashboardLayout() {
   return (
     <ErrorBoundary>
-      <NetworkProvider>
-        <WalletProvider>
-          <ActiveTokensProvider>
-            <TxHistoryProvider>
-              <PnLProvider>
-                <WhaleProvider>
-                  <ToastProvider>
-                    <AppContent />
-                  </ToastProvider>
-                </WhaleProvider>
-              </PnLProvider>
-            </TxHistoryProvider>
-          </ActiveTokensProvider>
-        </WalletProvider>
-      </NetworkProvider>
+      <ChainProvider>
+        <NetworkProvider>
+          <WalletProvider>
+            <ActiveTokensProvider>
+              <TxHistoryProvider>
+                <PnLProvider>
+                  <WhaleProvider>
+                    <ToastProvider>
+                      <AppContent />
+                    </ToastProvider>
+                  </WhaleProvider>
+                </PnLProvider>
+              </TxHistoryProvider>
+            </ActiveTokensProvider>
+          </WalletProvider>
+        </NetworkProvider>
+      </ChainProvider>
     </ErrorBoundary>
   )
 }

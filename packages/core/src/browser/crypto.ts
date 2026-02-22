@@ -27,6 +27,8 @@ export interface BrowserWalletData {
   createdAt: number;
   name?: string;
   type?: 'sniper' | 'treasury' | 'burner';
+  /** Chain this wallet belongs to. Defaults to 'solana' when absent (backward compat). */
+  chain?: import('../chains/types.js').ChainId;
 }
 
 export interface BrowserWalletExport {

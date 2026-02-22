@@ -13,6 +13,7 @@ export const toolSchema = z.object({
   amountSol: z.number().positive().optional().describe('SOL amount to spend (for buying). Mutually exclusive with amountTokens.'),
   amountTokens: z.number().positive().optional().describe('Token amount to sell (raw, smallest unit). Mutually exclusive with amountSol.'),
   slippageBps: z.number().int().min(1).max(5000).optional().describe('Slippage tolerance in basis points (default: from config, usually 500)'),
+  chain: z.enum(['solana', 'bsc', 'base']).optional().default('solana').describe('Blockchain to trade on'),
 });
 
 export type ToolInput = z.infer<typeof toolSchema>;
@@ -28,6 +29,14 @@ function getDexConfig(config: MCPConfig, slippageOverride?: number): DexConfig {
 
 export async function handler(args: ToolInput, config: MCPConfig) {
   const { tokenMint, amountSol, amountTokens, slippageBps } = args;
+
+  // Multi-chain guard — EVM quoting not yet wired
+  const chain = args.chain ?? 'solana';
+  if (chain !== 'solana') {
+    return {
+      content: [{ type: 'text' as const, text: `EVM trading on ${chain} coming soon. Use Solana for now.` }],
+    };
+  }
 
   if (!amountSol && !amountTokens) {
     return {

@@ -3,6 +3,9 @@
  * Core functionality for TrenchSniper OS
  */
 
+// Chain definitions (multi-chain support)
+export * from './chains/index.js';
+
 // Wallet functionality
 export * from './wallet/index.js';
 export * from './wallet/withdraw.js';
@@ -96,6 +99,9 @@ export * from './activity/index.js';
 
 // Liquidity - LP token locking
 export * from './liquidity/index.js';
+
+// Launch - Printr multi-chain token launch
+export * from './launch/index.js';
 
 // Volume - PumpSwap venue detection and runout estimations
 export * from './volume/index.js';

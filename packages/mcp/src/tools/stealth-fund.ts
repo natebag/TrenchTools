@@ -5,6 +5,7 @@ import {
   LAMPORTS_PER_SOL,
   Transaction,
 } from '@solana/web3.js';
+import { CHANGENOW_PAIRS } from '@trenchtools/core';
 import type { MCPConfig } from '../config.js';
 import { ensureUnlocked, getKeypairByAddress, getDefaultWallet } from '../vault.js';
 import { getQuote, executeSwap } from '../lib/dex/index.js';
@@ -21,7 +22,8 @@ export const toolDescription =
 
 export const toolSchema = z.object({
   walletAddresses: z.array(z.string()).min(1).max(25).describe('Wallet addresses to fund stealthily'),
-  amountSol: z.number().positive().describe('Amount of SOL to deliver to each wallet'),
+  amountSol: z.number().positive().describe('Amount of native token to deliver to each wallet (SOL/BNB/ETH)'),
+  chain: z.enum(['solana', 'bsc', 'base']).optional().default('solana').describe('Chain to receive funds on'),
 });
 
 export type ToolInput = z.infer<typeof toolSchema>;
@@ -46,22 +48,30 @@ async function createChangeNowExchange(
   apiKey: string,
   toAddress: string,
   fromAmount: number,
+  fromCurrency: string = 'usdcsol',
+  toCurrency: string = 'sol',
+  toNetwork?: string,
 ): Promise<ChangeNowExchange> {
+  const body: Record<string, string> = {
+    fromCurrency,
+    toCurrency,
+    fromNetwork: 'sol', // USDC always originates from Solana
+    fromAmount: fromAmount.toString(),
+    address: toAddress,
+    flow: 'standard',
+  };
+  // If a specific destination network is needed (e.g. 'base' for ETH on Base)
+  if (toNetwork) {
+    body.toNetwork = toNetwork;
+  }
+
   const resp = await fetch('https://api.changenow.io/v2/exchange', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'x-changenow-api-key': apiKey,
     },
-    body: JSON.stringify({
-      fromCurrency: 'usdcsol',
-      toCurrency: 'sol',
-      fromNetwork: 'sol',
-      toNetwork: 'sol',
-      fromAmount: fromAmount.toString(),
-      address: toAddress,
-      flow: 'standard',
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!resp.ok) {
@@ -159,6 +169,8 @@ function getAssociatedTokenAddress(owner: PublicKey, mint: PublicKey): PublicKey
 
 export async function handler(args: ToolInput, config: MCPConfig) {
   const { walletAddresses, amountSol } = args;
+  const chain = args.chain ?? 'solana';
+  const cnPair = CHANGENOW_PAIRS[chain];
 
   // -----------------------------------------------------------------------
   // Path 1: Hosted mode — delegate to hosted API
@@ -171,7 +183,7 @@ export async function handler(args: ToolInput, config: MCPConfig) {
           'Content-Type': 'application/json',
           ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
         },
-        body: JSON.stringify({ walletAddresses, amountSol }),
+        body: JSON.stringify({ walletAddresses, amountSol, chain }),
       });
 
       if (!resp.ok) {
@@ -302,11 +314,14 @@ export async function handler(args: ToolInput, config: MCPConfig) {
   for (const addr of walletAddresses) {
     const truncated = addr.slice(0, 4) + '...' + addr.slice(-4);
     try {
-      // Create ChangeNow exchange: USDC(SOL) -> SOL
+      // Create ChangeNow exchange: USDC -> native token on target chain
       const exchange = await createChangeNowExchange(
         changeNowApiKey,
         addr,
         usdcPerWalletHuman,
+        cnPair.from,
+        cnPair.to,
+        cnPair.network,
       );
 
       lines.push(`  ${truncated}: exchange ${exchange.id} created, deposit to ${exchange.payinAddress.slice(0, 8)}...`);

@@ -3,6 +3,7 @@
  */
 
 import { Keypair } from '@solana/web3.js';
+import type { ChainId } from '@trenchtools/core';
 
 /**
  * Quote response from a DEX
@@ -11,10 +12,12 @@ export interface Quote {
   dex: DexType;
   inputMint: string;
   outputMint: string;
-  inputAmount: number;      // In smallest units (lamports)
+  inputAmount: number;      // In smallest units (lamports / wei)
   outputAmount: number;     // In smallest units
   priceImpactPct: number;
   slippageBps: number;
+  /** Chain this quote is for */
+  chain?: ChainId;
   // DEX-specific data for executing the swap
   raw: unknown;
 }
@@ -29,12 +32,13 @@ export interface SwapResult {
   wallet: string;           // Truncated wallet address
   inputAmount: number;
   outputAmount?: number;
+  chain?: ChainId;
 }
 
 /**
  * Supported DEX types
  */
-export type DexType = 'jupiter' | 'raydium' | 'meteora' | 'pumpfun';
+export type DexType = 'jupiter' | 'raydium' | 'meteora' | 'pumpfun' | 'openocean';
 
 /**
  * DEX configuration options
@@ -44,6 +48,10 @@ export interface DexConfig {
   apiKey?: string;
   slippageBps?: number;     // Default: 200 (2%)
   heliusApiKey?: string;    // Optional: enables smart priority fee estimation
+  /** Chain for this config (default: 'solana') */
+  chain?: ChainId;
+  /** EVM chain ID (56 for BSC, 8453 for Base) — set automatically from chain */
+  evmChainId?: number;
 }
 
 /**
@@ -127,13 +135,41 @@ export const DEX_INFO: Record<DexType, DexInfo> = {
     color: '#EC4899',  // pink
     website: 'https://pump.fun',
   },
+  openocean: {
+    type: 'openocean',
+    name: 'OpenOcean',
+    description: 'Cross-chain DEX aggregator (BSC, Base)',
+    isImplemented: true,
+    color: '#00D4AA',  // OpenOcean teal
+    website: 'https://openocean.finance',
+  },
 };
 
 /**
- * Well-known token mints
+ * Well-known token mints (Solana)
  */
 export const KNOWN_MINTS = {
   WSOL: 'So11111111111111111111111111111111111111112',
   USDC: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
   USDT: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
 } as const;
+
+/**
+ * Native wrapped token addresses per EVM chain.
+ * OpenOcean uses the 0xeee...eee address for native token (ETH/BNB).
+ */
+export const EVM_NATIVE_TOKEN = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
+
+export const KNOWN_EVM_TOKENS: Record<string, Record<string, string>> = {
+  bsc: {
+    WBNB: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c',
+    USDT: '0x55d398326f99059fF775485246999027B3197955',
+    USDC: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d',
+    BUSD: '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56',
+  },
+  base: {
+    WETH: '0x4200000000000000000000000000000000000006',
+    USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    USDbC: '0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA',
+  },
+};

@@ -1,10 +1,19 @@
 /**
- * Browser-compatible ChangeNow client for USDC-SOL stealth funding.
+ * Browser-compatible ChangeNow client for stealth funding.
  *
+ * Supports multi-chain: USDC→SOL (Solana), USDC→BNB (BSC), USDC→ETH (Base).
  * Self-hosted mode: calls ChangeNow API directly with user-provided API key from localStorage.
  */
 
+import { type ChainId, CHANGENOW_PAIRS } from '@trenchtools/core';
+
 const CHANGENOW_DIRECT_BASE = 'https://api.changenow.io/v1';
+
+/** Get the ChangeNow pair string for a given chain (e.g. "usdcsol_sol") */
+function getPairString(chain: ChainId = 'solana'): string {
+  const pair = CHANGENOW_PAIRS[chain];
+  return `${pair.from}_${pair.to}`;
+}
 
 // ── Types ──
 
@@ -106,20 +115,23 @@ export class ChangeNowClient {
     return resp.json() as Promise<T>;
   }
 
-  /** Get an estimated exchange amount for USDC-SOL (Solana) swap. */
-  async getEstimate(amountUsdc: number): Promise<ChangeNowEstimate> {
-    return this.request('GET', `/exchange-amount/${amountUsdc}/usdcsol_sol`);
+  /** Get an estimated exchange amount for a stealth swap on the given chain. */
+  async getEstimate(amountUsdc: number, chain: ChainId = 'solana'): Promise<ChangeNowEstimate> {
+    const pair = getPairString(chain);
+    return this.request('GET', `/exchange-amount/${amountUsdc}/${pair}`);
   }
 
-  /** Get the minimum exchange amount for the USDC-SOL pair. */
-  async getMinAmount(): Promise<number> {
-    const result = await this.request<{ minAmount: number }>('GET', '/min-amount/usdcsol_sol');
+  /** Get the minimum exchange amount for the given chain's pair. */
+  async getMinAmount(chain: ChainId = 'solana'): Promise<number> {
+    const pair = getPairString(chain);
+    const result = await this.request<{ minAmount: number }>('GET', `/min-amount/${pair}`);
     return result.minAmount;
   }
 
-  /** Create a new USDC-SOL exchange. */
-  async createExchange(amountUsdc: number, destinationAddress: string): Promise<ChangeNowExchange> {
+  /** Create a new stealth exchange for the given chain. */
+  async createExchange(amountUsdc: number, destinationAddress: string, chain: ChainId = 'solana'): Promise<ChangeNowExchange> {
     const apiKey = this.getApiKey();
+    const cnPair = CHANGENOW_PAIRS[chain];
 
     const result = await this.request<{
       id: string;
@@ -131,10 +143,11 @@ export class ChangeNowClient {
       expectedReceiveAmount?: number;
       status: string;
     }>('POST', `/transactions/${apiKey}`, {
-      from: 'usdcsol',
-      to: 'sol',
+      from: cnPair.from,
+      to: cnPair.to,
       address: destinationAddress,
       amount: amountUsdc,
+      ...(cnPair.network ? { network: cnPair.network } : {}),
     });
 
     return {
