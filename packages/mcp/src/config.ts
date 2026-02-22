@@ -9,14 +9,27 @@ export interface MCPConfig {
   vaultPath: string;
   slippageBps: number;
   maxBuySol: number;
+  changeNowApiKey?: string; // TRENCH_CHANGENOW_API_KEY
+  // Hosted mode fields
+  apiUrl?: string;      // TRENCH_API_URL
+  apiKey?: string;      // TRENCH_API_KEY
+  isHosted: boolean;    // true when apiUrl is set
+  // Runtime fields populated from /api/config:
+  hostedRpcUrl?: string;
+  feeAccount?: string;
+  feeBps?: number;
 }
 
 export function loadConfig(): MCPConfig {
   const rpcUrl = process.env.TRENCH_RPC_URL;
   const vaultPassword = process.env.TRENCH_VAULT_PASSWORD;
+  const apiUrl = process.env.TRENCH_API_URL || undefined;
+  const apiKey = process.env.TRENCH_API_KEY || undefined;
+  const isHosted = !!apiUrl;
 
-  if (!rpcUrl) {
-    console.error('Error: TRENCH_RPC_URL is required. Set it in your MCP server env config.');
+  // RPC URL is only required when NOT in hosted mode (hosted mode fetches RPC from /api/config)
+  if (!rpcUrl && !isHosted) {
+    console.error('Error: TRENCH_RPC_URL is required (or set TRENCH_API_URL for hosted mode). Set it in your MCP server env config.');
     process.exit(1);
   }
   if (!vaultPassword || vaultPassword.length < 8) {
@@ -30,12 +43,16 @@ export function loadConfig(): MCPConfig {
     : vaultPathRaw;
 
   return {
-    rpcUrl,
+    rpcUrl: rpcUrl || '', // Will be populated from hosted config if empty
     vaultPassword,
     jupiterApiKey: process.env.TRENCH_JUPITER_API_KEY || undefined,
     heliusApiKey: process.env.TRENCH_HELIUS_API_KEY || undefined,
     vaultPath,
     slippageBps: parseInt(process.env.TRENCH_SLIPPAGE_BPS || '500', 10),
     maxBuySol: parseFloat(process.env.TRENCH_MAX_BUY_SOL || '1.0'),
+    changeNowApiKey: process.env.TRENCH_CHANGENOW_API_KEY || undefined,
+    apiUrl,
+    apiKey,
+    isHosted,
   };
 }

@@ -66,3 +66,10 @@ export function getDefaultWallet(wallets: WalletData[]): WalletData {
   if (wallets.length === 0) throw new Error('No wallets in vault. Use trench_wallet_generate to create one.');
   return wallets[0];
 }
+
+export async function removeWallets(config: MCPConfig, addresses: string[]): Promise<void> {
+  const existing = await ensureUnlocked(config);
+  const addressSet = new Set(addresses);
+  const remaining = existing.filter(w => !addressSet.has(w.publicKey));
+  await saveVault(config, remaining);
+}

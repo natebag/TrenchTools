@@ -28,9 +28,14 @@ export type DexType = 'jupiter' | 'pumpfun';
 
 export interface DexConfig {
   rpcUrl: string;
-  apiKey?: string;
+  apiKey?: string;          // Jupiter API key
   slippageBps?: number;
   heliusApiKey?: string;
+  // Hosted mode fields
+  hostedApiUrl?: string;    // Hosted API URL (e.g. https://app.trenchtools.com)
+  hostedApiKey?: string;    // Hosted API key (trench_sk_...)
+  feeAccount?: string;      // Fee collection wallet address
+  feeBps?: number;           // Fee basis points
 }
 
 export interface DexSwapper {
