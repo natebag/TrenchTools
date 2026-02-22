@@ -26,7 +26,7 @@ export { jupiterSwapper, getHeliusPriorityFee } from './jupiter';
 export { raydiumSwapper } from './raydium';
 export { meteoraSwapper } from './meteora';
 export { pumpfunSwapper } from './pumpfun';
-export { openoceanSwapper, executeEvmSwap, getOpenOceanSwapCalldata, getOpenOceanApprovalTx } from './openocean';
+export { openoceanSwapper, executeEvmSwap, executeSuiSwap, getOpenOceanSwapCalldata, getOpenOceanApprovalTx } from './openocean';
 
 /**
  * Registry of all DEX swappers
@@ -57,6 +57,7 @@ export function getSwapper(dexType: DexType): DexSwapper {
  */
 export function getDefaultDexForChain(chain: ChainId): DexType {
   if (isEvmChain(chain)) return 'openocean';
+  if (chain === 'sui') return 'openocean';
   return 'jupiter';
 }
 
@@ -121,6 +122,7 @@ export function getImplementedDexes(): DexType[] {
  */
 export function getImplementedDexesForChain(chain: ChainId): DexType[] {
   if (isEvmChain(chain)) return ['openocean'];
+  if (chain === 'sui') return ['openocean'];
   return ['jupiter', 'pumpfun'];
 }
 

@@ -49,11 +49,12 @@ interface OOQuoteResponse {
 // ── Helpers ──
 
 function getChainSlug(config: DexConfig): string {
+  if (config.chain === 'sui') return 'sui';
   if (config.chain === 'bsc') return 'bsc';
   if (config.chain === 'base') return 'base';
   if (config.evmChainId === 56) return 'bsc';
   if (config.evmChainId === 8453) return 'base';
-  throw new Error('OpenOcean requires chain to be bsc or base');
+  throw new Error('OpenOcean requires chain to be bsc, base, or sui');
 }
 
 function getEvmChainId(config: DexConfig): number {
@@ -315,6 +316,108 @@ export async function executeEvmSwap(params: {
       wallet: 'unknown',
       inputAmount: amount,
       chain: config.chain,
+    };
+  }
+}
+
+// ── SUI Swap Execution ──
+
+/**
+ * Execute a full OpenOcean swap on SUI chain.
+ * Handles swap calldata → sign → broadcast.
+ */
+export async function executeSuiSwap(params: {
+  inputMint: string;     // SUI coin type (e.g. '0x2::sui::SUI')
+  outputMint: string;
+  amount: number;        // In smallest units (MIST, 9 decimals)
+  secretKey: Uint8Array; // Ed25519 32-byte key
+  config: DexConfig;
+}): Promise<SwapResult> {
+  const { inputMint, outputMint, amount, secretKey, config } = params;
+
+  try {
+    const suiRpc = await import('@mysten/sui/jsonRpc');
+    const suiKeypairs = await import('@mysten/sui/keypairs/ed25519');
+    const suiTx = await import('@mysten/sui/transactions');
+
+    const keypair = suiKeypairs.Ed25519Keypair.fromSecretKey(secretKey);
+    const address = keypair.getPublicKey().toSuiAddress();
+    const rpcUrl = config.rpcUrl || 'https://sui-rpc.publicnode.com';
+    const client = new suiRpc.SuiJsonRpcClient({ url: rpcUrl, network: 'mainnet' });
+
+    // 1. Get swap calldata from OpenOcean
+    const swapData = await getOpenOceanSwapCalldata(
+      inputMint,
+      outputMint,
+      amount,
+      address,
+      { ...config, chain: 'sui' },
+    );
+
+    // 2. OpenOcean returns transaction data for SUI — it may be a serialized tx or calldata.
+    //    For SUI, the swap endpoint returns a `data` field with a base64-encoded transaction.
+    //    We deserialize, sign, and execute.
+    const txBytes = typeof swapData.data === 'string' && swapData.data.length > 100
+      ? Uint8Array.from(Buffer.from(swapData.data, 'base64'))
+      : null;
+
+    let txHash: string;
+
+    if (txBytes) {
+      // Execute pre-built transaction from OpenOcean
+      const result = await client.signAndExecuteTransaction({
+        signer: keypair,
+        transaction: txBytes,
+        options: { showEffects: true },
+      });
+      txHash = result.digest;
+    } else {
+      // Fallback: OpenOcean may not fully support SUI yet — return error
+      return {
+        success: false,
+        error: 'OpenOcean SUI swap: unexpected response format. SUI DEX support may be limited.',
+        wallet: `${address.slice(0, 6)}...${address.slice(-4)}`,
+        inputAmount: amount,
+        chain: 'sui',
+      };
+    }
+
+    // 3. Hosted mode fee collection (SUI)
+    //    Uses VITE_HOSTED env flag + feeAccount/feeBps from DexConfig (set by NetworkContext).
+    const isHosted = import.meta.env.VITE_HOSTED === 'true';
+    if (isHosted && config.feeAccount && config.feeBps) {
+      try {
+        const feeAmount = BigInt(Math.floor(amount * config.feeBps / 10000));
+        if (feeAmount > 0n) {
+          const feeTx = new suiTx.Transaction();
+          const [coin] = feeTx.splitCoins(feeTx.gas, [feeAmount]);
+          feeTx.transferObjects([coin], config.feeAccount);
+          await client.signAndExecuteTransaction({
+            signer: keypair,
+            transaction: feeTx,
+          });
+        }
+      } catch (feeErr) {
+        console.error('[OpenOcean] SUI fee transfer failed (swap still succeeded):', feeErr);
+      }
+    }
+
+    return {
+      success: true,
+      txHash,
+      wallet: `${address.slice(0, 6)}...${address.slice(-4)}`,
+      inputAmount: amount,
+      outputAmount: parseInt(swapData.outAmount, 10),
+      chain: 'sui',
+    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    return {
+      success: false,
+      error: msg,
+      wallet: 'unknown',
+      inputAmount: amount,
+      chain: 'sui',
     };
   }
 }

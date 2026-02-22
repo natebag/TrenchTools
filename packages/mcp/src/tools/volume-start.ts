@@ -16,6 +16,7 @@ export const toolDescription =
 
 export const toolSchema = z.object({
   tokenMint: z.string().describe('Token mint address to generate volume for'),
+  chain: z.enum(['solana', 'bsc', 'base', 'sui']).optional().default('solana').describe('Blockchain to trade on'),
   maxWallets: z.number().int().min(1).max(25).optional().default(3).describe('Number of vault wallets to use (default 3)'),
   minSwapSol: z.number().positive().optional().default(0.01).describe('Min SOL per swap (default 0.01)'),
   maxSwapSol: z.number().positive().optional().default(0.05).describe('Max SOL per swap (default 0.05)'),
@@ -171,6 +172,14 @@ export async function handler(args: ToolInput, config: MCPConfig) {
     minIntervalMs = 30000,
     maxIntervalMs = 120000,
   } = args;
+
+  // Multi-chain guard — non-Solana trading not yet wired
+  const chain = args.chain ?? 'solana';
+  if (chain !== 'solana') {
+    return {
+      content: [{ type: 'text' as const, text: `Trading on ${chain} coming soon. Currently Solana only.` }],
+    };
+  }
 
   // Check no volume session already running
   const existing = getSessionsByType('volume').filter(s => s.running);

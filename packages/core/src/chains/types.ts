@@ -91,7 +91,7 @@ export const CHAINS: Record<ChainId, ChainConfig> = {
     explorerTxPath: '/tx/',
     explorerAddressPath: '/account/',
     explorerTokenPath: '/coin/',
-    defaultRpcUrl: 'https://fullnode.mainnet.sui.io',
+    defaultRpcUrl: 'https://sui-rpc.publicnode.com',
     color: '#4DA2FF',
     caip2: 'sui:mainnet', // Printr may use different format
   },
@@ -102,7 +102,7 @@ export const CHAINS: Record<ChainId, ChainConfig> = {
 export const ALL_CHAIN_IDS: ChainId[] = ['solana', 'bsc', 'base', 'sui'];
 
 /** Chains that are actually implemented and available right now */
-export const ACTIVE_CHAIN_IDS: ChainId[] = ['solana', 'bsc', 'base'];
+export const ACTIVE_CHAIN_IDS: ChainId[] = ['solana', 'bsc', 'base', 'sui'];
 
 // ── Utility Functions ──
 
@@ -202,16 +202,16 @@ export const CHAIN_FEATURES: Record<ChainId, ChainFeatures> = {
     shield: true,
   },
   sui: {
-    trading: false,
-    volumeBoost: false,
-    sniping: false,
-    botGroups: false,
-    activityGen: false,
-    launch: false,
+    trading: true,
+    volumeBoost: true,
+    sniping: true,
+    botGroups: true,
+    activityGen: true,
+    launch: true,
     claimFees: false,
     ghostHolders: false,
-    stealthFund: false,
-    shield: false,
+    stealthFund: true,
+    shield: true,
   },
 };
 

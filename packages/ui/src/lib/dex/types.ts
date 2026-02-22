@@ -52,6 +52,10 @@ export interface DexConfig {
   chain?: ChainId;
   /** EVM chain ID (56 for BSC, 8453 for Base) — set automatically from chain */
   evmChainId?: number;
+  /** Fee recipient address for hosted mode */
+  feeAccount?: string;
+  /** Fee in basis points for hosted mode */
+  feeBps?: number;
 }
 
 /**
@@ -172,4 +176,10 @@ export const KNOWN_EVM_TOKENS: Record<string, Record<string, string>> = {
     USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
     USDbC: '0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA',
   },
+};
+
+export const KNOWN_SUI_TOKENS = {
+  SUI: '0x2::sui::SUI',
+  USDC: '0xdba34672e30b18f80f64ea56265606f4990e9073b2e7c9e5c2e51835ed7da3fe::usdc::USDC',
+  USDT: '0xc060006111016b8a020ad5b33834984a437aaa7d3c74c18e09a95d48aceab08c::coin::COIN',
 };

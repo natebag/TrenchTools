@@ -122,6 +122,14 @@ export function ChainProvider({ children }: { children: ReactNode }) {
           if (!cancelled) {
             setNativeBalance(parseFloat(formatEther(balance)));
           }
+        } else if (chainConfig.family === 'sui') {
+          const suiMod = await import('@mysten/sui/jsonRpc');
+          const rpcUrl = localStorage.getItem('trench_rpc_sui') || chainConfig.defaultRpcUrl;
+          const client = new suiMod.SuiJsonRpcClient({ url: rpcUrl, network: 'mainnet' });
+          const balance = await client.getBalance({ owner: activeWallet.address });
+          if (!cancelled) {
+            setNativeBalance(Number(balance.totalBalance) / 1e9); // SUI has 9 decimals
+          }
         }
       } catch (err) {
         console.error(`[ChainContext] Balance fetch error (${chain}):`, err);

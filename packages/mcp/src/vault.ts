@@ -6,8 +6,9 @@ import {
   decryptWallets,
   generateRandom,
   keypairsToWalletData,
+  isEvmChain,
 } from '@trenchtools/core';
-import type { WalletData } from '@trenchtools/core';
+import type { WalletData, ChainId } from '@trenchtools/core';
 import type { MCPConfig } from './config.js';
 
 let cachedWallets: WalletData[] | null = null;
@@ -48,7 +49,20 @@ export async function addWallets(config: MCPConfig, newWallets: WalletData[]): P
   await saveVault(config, [...existing, ...newWallets]);
 }
 
-export async function generateAndAddWallets(config: MCPConfig, count: number): Promise<WalletData[]> {
+export async function generateAndAddWallets(config: MCPConfig, count: number, chain: ChainId = 'solana'): Promise<WalletData[]> {
+  if (chain === 'sui') {
+    const { generateSuiWallets } = await import('@trenchtools/core');
+    const walletData = generateSuiWallets(count);
+    await addWallets(config, walletData);
+    return walletData;
+  }
+  if (isEvmChain(chain)) {
+    const { generateEvmWallets } = await import('@trenchtools/core');
+    const walletData = generateEvmWallets(count, chain);
+    await addWallets(config, walletData);
+    return walletData;
+  }
+  // Solana (existing)
   const keypairs = generateRandom(count);
   const walletData = keypairsToWalletData(keypairs);
   await addWallets(config, walletData);
@@ -60,6 +74,14 @@ export function getKeypairByAddress(wallets: WalletData[], address: string): Key
   if (!w) throw new Error(`Wallet ${address} not found in vault`);
   const secretKey = w.secretKey instanceof Uint8Array ? w.secretKey : new Uint8Array(Object.values(w.secretKey));
   return Keypair.fromSecretKey(secretKey);
+}
+
+export function getSuiKeypairByAddress(wallets: WalletData[], address: string) {
+  const w = wallets.find(w => w.publicKey === address);
+  if (!w) throw new Error(`SUI wallet ${address} not found in vault`);
+  const secretKey = w.secretKey instanceof Uint8Array ? w.secretKey : new Uint8Array(Object.values(w.secretKey));
+  // Return raw secret key - caller will construct Ed25519Keypair
+  return secretKey;
 }
 
 export function getDefaultWallet(wallets: WalletData[]): WalletData {

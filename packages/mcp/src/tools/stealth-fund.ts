@@ -23,7 +23,7 @@ export const toolDescription =
 export const toolSchema = z.object({
   walletAddresses: z.array(z.string()).min(1).max(25).describe('Wallet addresses to fund stealthily'),
   amountSol: z.number().positive().describe('Amount of native token to deliver to each wallet (SOL/BNB/ETH)'),
-  chain: z.enum(['solana', 'bsc', 'base']).optional().default('solana').describe('Chain to receive funds on'),
+  chain: z.enum(['solana', 'bsc', 'base', 'sui']).optional().default('solana').describe('Chain to receive funds on'),
 });
 
 export type ToolInput = z.infer<typeof toolSchema>;

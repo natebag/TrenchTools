@@ -137,19 +137,33 @@ export class BrowserWalletManager {
   async generateWallet(
     name: string,
     type: 'sniper' | 'treasury' | 'burner',
-    password: string
+    password: string,
+    chain?: string
   ): Promise<Wallet> {
-    // Generate keypair
-    const keypair = Keypair.generate();
+    let walletData: BrowserWalletData;
 
-    // Create wallet data
-    const walletData: BrowserWalletData = {
-      publicKey: keypair.publicKey.toBase58(),
-      secretKey: Array.from(keypair.secretKey),
-      createdAt: Date.now(),
-      name,
-      type,
-    };
+    if (chain === 'sui') {
+      const { generateSuiWallet } = await import('@trenchtools/core');
+      const wallet = generateSuiWallet();
+      // SUI wallets: publicKey is the 0x-prefixed address, secretKey is the raw 32-byte Ed25519 key
+      walletData = {
+        publicKey: wallet.address,
+        secretKey: Array.from(wallet.privateKey),
+        createdAt: Date.now(),
+        name,
+        type,
+      };
+    } else {
+      // Default: Solana
+      const keypair = Keypair.generate();
+      walletData = {
+        publicKey: keypair.publicKey.toBase58(),
+        secretKey: Array.from(keypair.secretKey),
+        createdAt: Date.now(),
+        name,
+        type,
+      };
+    }
 
     // Load existing wallets or create new vault
     let existingWallets: BrowserWalletData[] = [];
@@ -168,9 +182,8 @@ export class BrowserWalletManager {
     const allWallets = [...existingWallets, walletData];
     await this.vault.save(allWallets, password);
 
-    // Store keypair in memory
+    // Store keypair in memory (Solana keypairs only — SUI keys are stored as raw bytes in vault)
     const wallet = this.dataToWallet(walletData, type);
-    this.keypairs.set(wallet.id, keypair);
 
     return wallet;
   }
@@ -182,19 +195,34 @@ export class BrowserWalletManager {
     count: number,
     namePrefix: string,
     type: 'sniper' | 'treasury' | 'burner',
-    password: string
+    password: string,
+    chain?: string
   ): Promise<Wallet[]> {
     const newWallets: BrowserWalletData[] = [];
 
     for (let i = 0; i < count; i++) {
-      const keypair = Keypair.generate();
-      newWallets.push({
-        publicKey: keypair.publicKey.toBase58(),
-        secretKey: Array.from(keypair.secretKey),
-        createdAt: Date.now(),
-        name: `${namePrefix}${namePrefix.endsWith('-') || namePrefix.endsWith(' ') ? '' : ' '}${i + 1}`,
-        type,
-      });
+      const walletName = `${namePrefix}${namePrefix.endsWith('-') || namePrefix.endsWith(' ') ? '' : ' '}${i + 1}`;
+
+      if (chain === 'sui') {
+        const { generateSuiWallet } = await import('@trenchtools/core');
+        const wallet = generateSuiWallet();
+        newWallets.push({
+          publicKey: wallet.address,
+          secretKey: Array.from(wallet.privateKey),
+          createdAt: Date.now(),
+          name: walletName,
+          type,
+        });
+      } else {
+        const keypair = Keypair.generate();
+        newWallets.push({
+          publicKey: keypair.publicKey.toBase58(),
+          secretKey: Array.from(keypair.secretKey),
+          createdAt: Date.now(),
+          name: walletName,
+          type,
+        });
+      }
     }
 
     // Load existing or start fresh
@@ -383,10 +411,20 @@ export class BrowserWalletManager {
   ): Wallet {
     // Use type from stored data, fallback for backward compatibility
     const type = data.type || fallbackType;
-    // Reconstruct keypair and store
-    const keypair = Keypair.fromSecretKey(new Uint8Array(data.secretKey));
     const id = `wallet_${data.publicKey.slice(0, 8)}`;
-    this.keypairs.set(id, keypair);
+
+    // Reconstruct Solana keypair and store (only for 64-byte Solana secret keys).
+    // SUI wallets have 32-byte keys; EVM wallets also differ. Non-Solana keys
+    // are stored in the vault and retrieved via getUnlockedWallets() when needed.
+    const keyBytes = new Uint8Array(data.secretKey);
+    if (keyBytes.length === 64) {
+      try {
+        const keypair = Keypair.fromSecretKey(keyBytes);
+        this.keypairs.set(id, keypair);
+      } catch {
+        // Not a valid Solana keypair — skip (e.g., EVM or SUI wallet)
+      }
+    }
 
     return {
       id,
