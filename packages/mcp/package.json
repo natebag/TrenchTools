@@ -1,0 +1,48 @@
+{
+  "name": "trenchsniper-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for TrenchSniper — let AI agents trade on Solana",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "trenchsniper-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@trenchtools/core": "workspace:*",
+    "@solana/web3.js": "^1.91.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "solana",
+    "trading",
+    "ai-agent",
+    "claude",
+    "pumpfun",
+    "jupiter",
+    "defi",
+    "trenchsniper"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/0xTrench/TrenchSniper-OS"
+  }
+}
