@@ -1,11 +1,12 @@
 /**
  * Multi-DEX abstraction layer
- * 
+ *
  * Provides a unified interface for swapping across multiple DEXs:
- * - Jupiter (fully implemented) - Aggregator with best prices
+ * - Jupiter (Solana) - Aggregator with best prices
+ * - PumpFun (Solana) - Bonding curve for new tokens
+ * - OpenOcean (BSC, Base) - Cross-chain DEX aggregator
  * - Raydium (stub) - AMM/CLMM pools
  * - Meteora (stub) - DLMM pools
- * - PumpFun (stub) - Bonding curve for new tokens
  */
 
 export * from './types';
@@ -14,14 +15,18 @@ import { jupiterSwapper } from './jupiter';
 import { raydiumSwapper } from './raydium';
 import { meteoraSwapper } from './meteora';
 import { pumpfunSwapper } from './pumpfun';
+import { openoceanSwapper } from './openocean';
 import type { DexSwapper, DexType, DexConfig, Quote, SwapResult } from './types';
 import { DEX_INFO } from './types';
+import type { ChainId } from '@trenchtools/core';
+import { isEvmChain } from '@trenchtools/core';
 
 // Re-export individual swappers
 export { jupiterSwapper, getHeliusPriorityFee } from './jupiter';
 export { raydiumSwapper } from './raydium';
 export { meteoraSwapper } from './meteora';
 export { pumpfunSwapper } from './pumpfun';
+export { openoceanSwapper, executeEvmSwap, getOpenOceanSwapCalldata, getOpenOceanApprovalTx } from './openocean';
 
 /**
  * Registry of all DEX swappers
@@ -31,6 +36,7 @@ export const DEX_SWAPPERS: Record<DexType, DexSwapper> = {
   raydium: raydiumSwapper,
   meteora: meteoraSwapper,
   pumpfun: pumpfunSwapper,
+  openocean: openoceanSwapper,
 };
 
 /**
@@ -42,6 +48,16 @@ export function getSwapper(dexType: DexType): DexSwapper {
     throw new Error(`Unknown DEX type: ${dexType}`);
   }
   return swapper;
+}
+
+/**
+ * Get the default DEX type for a given chain.
+ * - Solana → 'jupiter'
+ * - BSC / Base → 'openocean'
+ */
+export function getDefaultDexForChain(chain: ChainId): DexType {
+  if (isEvmChain(chain)) return 'openocean';
+  return 'jupiter';
 }
 
 /**
@@ -59,7 +75,21 @@ export async function getQuote(
 }
 
 /**
- * Execute swap on a specific DEX
+ * Get a quote using the default DEX for the given chain.
+ */
+export async function getChainQuote(
+  chain: ChainId,
+  inputMint: string,
+  outputMint: string,
+  amount: number,
+  config: DexConfig,
+): Promise<Quote> {
+  const dex = getDefaultDexForChain(chain);
+  return getQuote(dex, inputMint, outputMint, amount, { ...config, chain });
+}
+
+/**
+ * Execute swap on a specific DEX (Solana only — use executeEvmSwap for EVM chains)
  */
 export async function executeSwap(
   quote: Quote,
@@ -87,6 +117,14 @@ export function getImplementedDexes(): DexType[] {
 }
 
 /**
+ * Get implemented DEXs for a specific chain
+ */
+export function getImplementedDexesForChain(chain: ChainId): DexType[] {
+  if (isEvmChain(chain)) return ['openocean'];
+  return ['jupiter', 'pumpfun'];
+}
+
+/**
  * Check if a DEX is implemented
  */
 export function isDexImplemented(dexType: DexType): boolean {
@@ -94,6 +132,6 @@ export function isDexImplemented(dexType: DexType): boolean {
 }
 
 /**
- * Default DEX to use
+ * Default DEX to use (Solana)
  */
 export const DEFAULT_DEX: DexType = 'jupiter';

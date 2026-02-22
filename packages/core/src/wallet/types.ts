@@ -6,6 +6,7 @@
  */
 
 import type { Keypair } from '@solana/web3.js';
+import type { ChainId } from '../chains/types.js';
 
 // ============ Constants ============
 
@@ -44,6 +45,8 @@ export interface WalletData {
   secretKey: Uint8Array;
   createdAt: number;
   derivationPath?: string;
+  /** Chain this wallet belongs to. Defaults to 'solana' when absent (backward compat). */
+  chain?: ChainId;
 }
 
 export interface WalletExport {

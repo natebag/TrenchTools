@@ -2,6 +2,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
+import type { ChainId } from '@trenchtools/core';
 
 const DEFAULT_API_URL = 'https://api.trenchtools.io';
 const TRENCH_DIR = path.join(os.homedir(), '.trenchsniper');
@@ -16,6 +17,10 @@ export interface MCPConfig {
   slippageBps: number;
   maxBuySol: number;
   changeNowApiKey?: string;
+  // EVM chain RPC URLs
+  bscRpcUrl?: string;
+  baseRpcUrl?: string;
+  // (OpenOcean requires no API key)
   // Hosted mode fields (default)
   apiUrl: string;         // defaults to api.trenchtools.io
   apiKey?: string;        // optional — for future account-linked features
@@ -86,8 +91,25 @@ export function loadConfig(): MCPConfig {
     slippageBps: parseInt(process.env.TRENCH_SLIPPAGE_BPS || '500', 10),
     maxBuySol: parseFloat(process.env.TRENCH_MAX_BUY_SOL || '1.0'),
     changeNowApiKey: process.env.TRENCH_CHANGENOW_API_KEY || undefined,
+    bscRpcUrl: process.env.TRENCH_BSC_RPC_URL || undefined,
+    baseRpcUrl: process.env.TRENCH_BASE_RPC_URL || undefined,
     apiUrl,
     apiKey,
     isHosted,
   };
+}
+
+/**
+ * Get the RPC URL for a given chain, falling back to sensible defaults.
+ */
+export function getRpcUrlForChain(config: MCPConfig, chain: ChainId): string {
+  switch (chain) {
+    case 'bsc':
+      return config.bscRpcUrl || 'https://bsc-dataseed.binance.org';
+    case 'base':
+      return config.baseRpcUrl || 'https://mainnet.base.org';
+    case 'solana':
+    default:
+      return config.rpcUrl;
+  }
 }
