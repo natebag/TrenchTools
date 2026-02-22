@@ -6,7 +6,7 @@ Works with Claude Desktop, Cursor, VS Code, Cline, Windsurf, and any MCP-compati
 
 ## Quick Start
 
-Add to your AI client config — just one env variable:
+Add to your AI client config — that's it, zero setup:
 
 ### Claude Desktop
 
@@ -17,10 +17,7 @@ Edit `claude_desktop_config.json`:
   "mcpServers": {
     "trenchsniper": {
       "command": "npx",
-      "args": ["-y", "trenchsniper-mcp"],
-      "env": {
-        "TRENCH_VAULT_PASSWORD": "your-secure-password"
-      }
+      "args": ["-y", "trenchsniper-mcp"]
     }
   }
 }
@@ -30,16 +27,25 @@ Edit `claude_desktop_config.json`:
 
 Same JSON format — paste into MCP settings.
 
-That's it. The server connects to TrenchTools infrastructure automatically. No RPC URL, no API keys, no account needed. 0.5% fee per swap.
+Done. On first run the server auto-generates an encrypted wallet vault and connects to TrenchTools infrastructure. No RPC URL, no API keys, no account. 0.5% fee per swap.
 
-## Environment Variables
+## What Happens on First Run
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `TRENCH_VAULT_PASSWORD` | Yes | - | Wallet vault encryption password (min 8 chars) |
-| `TRENCH_VAULT_PATH` | No | `~/.trenchsniper/vault.json` | Wallet vault file location |
-| `TRENCH_SLIPPAGE_BPS` | No | `500` | Default slippage (500 = 5%) |
-| `TRENCH_MAX_BUY_SOL` | No | `1.0` | Safety cap per buy order |
+1. Wallet vault auto-created at `~/.trenchsniper/vault.json` (AES-256-GCM + Argon2)
+2. Encryption password auto-generated and saved to `~/.trenchsniper/config.json`
+3. Server connects to TrenchTools (RPC, Jupiter, priority fees all handled)
+4. Ask your AI to generate wallets, fund them, and trade
+
+**Back up `~/.trenchsniper/`** — if you lose it, your wallet keys are unrecoverable.
+
+## Environment Variables (All Optional)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TRENCH_VAULT_PASSWORD` | Auto-generated | Custom vault encryption password (min 8 chars) |
+| `TRENCH_VAULT_PATH` | `~/.trenchsniper/vault.json` | Wallet vault file location |
+| `TRENCH_SLIPPAGE_BPS` | `500` | Default slippage (500 = 5%) |
+| `TRENCH_MAX_BUY_SOL` | `1.0` | Safety cap per buy order |
 
 ### Self-Hosting
 
@@ -112,6 +118,7 @@ To run fully self-hosted (your own RPC, no fees), see the [Self-Hosting Guide](.
 
 ## How It Works
 
+- **Zero config**: Auto-generates encrypted vault on first run, connects to hosted infrastructure
 - **Auto-routing**: Automatically detects PumpFun bonding curve tokens vs graduated Jupiter tokens
 - **Wallet vault**: AES-256-GCM encrypted wallet storage on disk
 - **Safety cap**: Configurable max SOL per buy to prevent fat-finger errors

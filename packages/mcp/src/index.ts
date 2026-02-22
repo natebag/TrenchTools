@@ -32,7 +32,7 @@ if (config.isHosted) {
 }
 
 const server = new McpServer(
-  { name: 'trenchsniper', version: '0.1.1' },
+  { name: 'trenchsniper', version: '0.1.2' },
   { capabilities: { tools: {} } }
 );
 
