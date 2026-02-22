@@ -8,20 +8,28 @@
   "bin": {
     "trenchsniper-mcp": "./dist/index.js"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
-    "@trenchtools/core": "workspace:*",
     "@solana/web3.js": "^1.91.0",
+    "argon2": "^0.40.0",
+    "bip39": "^3.1.0",
+    "ed25519-hd-key": "^1.3.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@trenchtools/core": "workspace:*",
     "@types/node": "^20.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.4.0"
@@ -35,14 +43,19 @@
     "trading",
     "ai-agent",
     "claude",
+    "cursor",
     "pumpfun",
     "jupiter",
     "defi",
-    "trenchsniper"
+    "trenchsniper",
+    "model-context-protocol"
   ],
+  "author": "TrenchTools",
   "license": "MIT",
+  "homepage": "https://trenchtools.io",
   "repository": {
     "type": "git",
-    "url": "https://github.com/0xTrench/TrenchSniper-OS"
+    "url": "https://github.com/0xTrench/TrenchSniper-OS",
+    "directory": "packages/mcp"
   }
 }
