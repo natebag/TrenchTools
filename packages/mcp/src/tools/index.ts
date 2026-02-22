@@ -22,6 +22,8 @@ import * as activityStart from './activity-start.js';
 import * as activityStatus from './activity-status.js';
 import * as activityStop from './activity-stop.js';
 import * as stealthFund from './stealth-fund.js';
+import * as launch from './launch.js';
+import * as claimFees from './claim-fees.js';
 
 export function registerAllTools(server: McpServer, config: MCPConfig): void {
   const register = (tool: { toolName: string; toolDescription: string; toolSchema: { shape: Record<string, unknown> }; handler: (args: any, config: MCPConfig) => Promise<any> }) => {
@@ -51,4 +53,6 @@ export function registerAllTools(server: McpServer, config: MCPConfig): void {
   register(activityStatus);
   register(activityStop);
   register(stealthFund);
+  register(launch);
+  register(claimFees);
 }

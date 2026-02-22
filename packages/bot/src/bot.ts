@@ -7,6 +7,10 @@ import {
   walletsCommand,
   statsCommand,
   alertsCommand,
+  launchCommand,
+  handleLaunchMessage,
+  activeWizards,
+  claimFeesCommand,
 } from './commands/index.js';
 import { stateManager } from './state/index.js';
 
@@ -21,9 +25,24 @@ export function createBot(token: string): Bot {
   bot.command('wallets', walletsCommand);
   bot.command('stats', statsCommand);
   bot.command('alerts', alertsCommand);
+  bot.command('launch', launchCommand);
+  bot.command('claim_fees', claimFeesCommand);
 
-  // Handle unknown commands
+  // Handle photos (launch wizard image step)
+  bot.on('message:photo', async (ctx) => {
+    const handled = await handleLaunchMessage(ctx, token);
+    if (!handled) {
+      // Photo not part of launch wizard, ignore
+    }
+  });
+
+  // Handle text messages (launch wizard steps + unknown commands)
   bot.on('message:text', async (ctx) => {
+    const chatId = ctx.chat?.id;
+    if (chatId && activeWizards.has(chatId)) {
+      await handleLaunchMessage(ctx, token);
+      return;
+    }
     if (ctx.message.text.startsWith('/')) {
       await ctx.reply(
         '❓ Unknown command\\. Use /start to see available commands\\.',
@@ -59,5 +78,7 @@ export async function setCommands(bot: Bot): Promise<void> {
     { command: 'wallets', description: 'View wallet balances' },
     { command: 'stats', description: 'View 24h statistics' },
     { command: 'alerts', description: 'Toggle trade notifications (on/off)' },
+    { command: 'launch', description: 'Launch a new token on PumpFun' },
+    { command: 'claim_fees', description: 'Claim PumpFun creator fees' },
   ]);
 }

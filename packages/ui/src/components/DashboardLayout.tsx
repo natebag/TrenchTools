@@ -16,7 +16,8 @@ import {
   ArrowDown,
   ArrowUp,
   Plus,
-  Fish
+  Fish,
+  Rocket
 } from 'lucide-react'
 import { WithdrawModal } from './WithdrawModal'
 import { WalletProvider } from '@/context/WalletContext'
@@ -39,11 +40,13 @@ import { DetectionDashboard } from './DetectionDashboard'
 import { MarketMaking } from './MarketMaking'
 import { TokenChart } from './TokenChart'
 import { WhaleAlerts } from './WhaleAlerts'
+import { LaunchControl } from './LaunchControl'
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: Activity, description: 'Overview & quick actions' },
   { path: '/wallets', label: 'Wallets', icon: Wallet, description: 'HD wallet management' },
   { path: '/snipe', label: 'Sniper', icon: Target, description: 'Token sniping control' },
+  { path: '/launch', label: 'Launch', icon: Rocket, description: 'Create PumpFun tokens' },
   { path: '/shield', label: 'Shield', icon: Shield, description: 'Security scanner' },
   { path: '/whales', label: 'Whales', icon: Fish, description: 'Whale alerts' },
   { path: '/pnl', label: 'P&L', icon: LineChart, description: 'Portfolio analytics' },
@@ -469,6 +472,7 @@ function AppContent() {
       case '/': return <Dashboard />
       case '/wallets': return <TreasuryWalletManager />
       case '/snipe': return <SniperControl />
+      case '/launch': return <LaunchControl />
       case '/shield': return <ShieldScanner />
       case '/whales': return <WhaleAlerts />
       case '/pnl': return <PnLCharts />

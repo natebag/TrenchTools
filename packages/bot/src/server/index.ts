@@ -74,6 +74,21 @@ export function createServer(port: number = 3001): ServerInstance {
     res.json({ enabled: stateManager.isAlertsEnabled() });
   });
 
+  // Launch token (placeholder for future UI integration)
+  app.post('/api/launch', async (_req: Request, res: Response) => {
+    res.status(501).json({ error: 'Use Telegram /launch command for now' });
+  });
+
+  // Claim fees (placeholder for future UI integration)
+  app.post('/api/claim-fees', async (_req: Request, res: Response) => {
+    res.status(501).json({ error: 'Use Telegram /claim_fees command for now' });
+  });
+
+  // Get launch history
+  app.get('/api/launches', (_req: Request, res: Response) => {
+    res.json(stateManager.getLaunches());
+  });
+
   const start = () => {
     return new Promise<void>((resolve) => {
       app.listen(port, () => {

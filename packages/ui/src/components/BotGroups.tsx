@@ -37,6 +37,7 @@ import {
   type DexConfig,
 } from '@/lib/dex'
 import { getBondingCurveAddress } from '@/lib/dex/pumpfun'
+import { filterLaunchWallets } from '@/lib/launchWalletGuard'
 import { Connection, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL, VersionedTransaction } from '@solana/web3.js'
 
 // ── Constants ──────────────────────────────────────────────────
@@ -808,13 +809,22 @@ export function BotGroups() {
       }
     }
 
-    // 5. Delete only verified-empty wallets from vault
-    //    Wallets with remaining tokens stay in vault for Clean Up.
+    // 5. Protect launch wallets — never auto-delete wallets that launched tokens
+    //    (destroying the keypair permanently prevents claiming creator fees)
+    const { safeIds: deletableIds, protectedIds: launchProtectedIds, protectedDetails: launchDetails } =
+      filterLaunchWallets(safeToDelete, wallets)
+
+    if (launchProtectedIds.length > 0) {
+      keptWallets.push(...launchProtectedIds)
+      console.warn(`[BotGroups] Protected ${launchProtectedIds.length} launch wallet(s) from deletion:`, launchDetails)
+    }
+
+    // 6. Delete only safe, non-launch wallets from vault
     try {
-      if (safeToDelete.length > 0) {
-        await removeWallets(safeToDelete, pw)
+      if (deletableIds.length > 0) {
+        await removeWallets(deletableIds, pw)
         walletsDeleted = true
-        console.log(`[BotGroups] Deleted ${safeToDelete.length}/${walletCount} bot wallets from vault`)
+        console.log(`[BotGroups] Deleted ${deletableIds.length}/${walletCount} bot wallets from vault`)
       } else if (keptWallets.length === 0) {
         walletsDeleted = true // nothing to delete
       }
@@ -823,7 +833,7 @@ export function BotGroups() {
     }
 
     if (keptWallets.length > 0) {
-      console.warn(`[BotGroups] Kept ${keptWallets.length} wallet(s) with remaining tokens — use Clean Up to retry`)
+      console.warn(`[BotGroups] Kept ${keptWallets.length} wallet(s) — use Clean Up to retry`)
     }
 
     // 6. Reset runtime — preserve kept wallets so Clean Up can find them
@@ -840,8 +850,9 @@ export function BotGroups() {
     if (sellErrors > 0) parts.push(`${sellErrors} sell error(s).`)
     if (walletsSwept > 0 && sweepErrors === 0) parts.push('SOL swept.')
     else if (sweepErrors > 0) parts.push(`Sweep: ${walletsSwept}/${safeToDelete.length} ok, ${sweepErrors} failed.`)
-    if (safeToDelete.length > 0 && walletsDeleted) parts.push(`${safeToDelete.length} wallet(s) deleted.`)
-    if (keptWallets.length > 0) parts.push(`${keptWallets.length} wallet(s) kept (unsold tokens) — use Clean Up.`)
+    if (deletableIds.length > 0 && walletsDeleted) parts.push(`${deletableIds.length} wallet(s) deleted.`)
+    if (launchProtectedIds.length > 0) parts.push(`${launchProtectedIds.length} launch wallet(s) protected (creator fees).`)
+    if (keptWallets.length > 0) parts.push(`${keptWallets.length} wallet(s) kept — use Clean Up.`)
     else if (!walletsDeleted && keptWallets.length === 0) parts.push('Wallet deletion failed — use Clean Up.')
 
     const hasErrors = sellErrors > 0 || sweepErrors > 0 || keptWallets.length > 0
@@ -1072,10 +1083,19 @@ export function BotGroups() {
       }
     }
 
-    // Delete only verified-empty orphaned wallets
+    // Protect launch wallets from deletion
+    const { safeIds: cleanupDeletable, protectedIds: cleanupProtected, protectedDetails: cleanupLaunchDetails } =
+      filterLaunchWallets(safeToDelete, wallets)
+
+    if (cleanupProtected.length > 0) {
+      keptOrphans.push(...cleanupProtected)
+      console.warn(`[BotGroups] cleanup: protected ${cleanupProtected.length} launch wallet(s):`, cleanupLaunchDetails)
+    }
+
+    // Delete only verified-empty, non-launch orphaned wallets
     try {
-      if (safeToDelete.length > 0) {
-        await removeWallets(safeToDelete, pw)
+      if (cleanupDeletable.length > 0) {
+        await removeWallets(cleanupDeletable, pw)
         walletsDeleted = true
       }
     } catch (err) {
@@ -1090,11 +1110,12 @@ export function BotGroups() {
     })
 
     const parts: string[] = [`Cleaned up orphaned wallets from ${config.name}.`]
-    if (safeToDelete.length > 0 && walletsDeleted) parts.push(`${safeToDelete.length} wallet(s) deleted.`)
+    if (cleanupDeletable.length > 0 && walletsDeleted) parts.push(`${cleanupDeletable.length} wallet(s) deleted.`)
     if (walletsSwept > 0) parts.push('SOL swept.')
     if (sweepErrors > 0) parts.push(`Sweep: ${walletsSwept}/${safeToDelete.length} ok.`)
-    if (keptOrphans.length > 0) parts.push(`${keptOrphans.length} wallet(s) kept (unsold tokens) — retry Clean Up.`)
-    if (!walletsDeleted && safeToDelete.length > 0) parts.push('Wallet deletion failed.')
+    if (cleanupProtected.length > 0) parts.push(`${cleanupProtected.length} launch wallet(s) protected (creator fees).`)
+    if (keptOrphans.length > 0) parts.push(`${keptOrphans.length} wallet(s) kept — retry Clean Up.`)
+    if (!walletsDeleted && cleanupDeletable.length > 0) parts.push('Wallet deletion failed.')
     const hasErrors = sweepErrors > 0 || !walletsDeleted || keptOrphans.length > 0
     setFeedback({ type: hasErrors ? 'error' : 'success', message: parts.join(' ') })
   }, [configs, getOrphanedWalletIds, wallets, getKeypairs, rpcUrl, getPassword, removeWallets, setRuntime, jupiterApiKey])
