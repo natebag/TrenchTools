@@ -12,6 +12,16 @@ import * as sell from './sell.js';
 import * as walletFund from './wallet-fund.js';
 import * as walletSweep from './wallet-sweep.js';
 import * as positions from './positions.js';
+import * as volumeStart from './volume-start.js';
+import * as volumeStatus from './volume-status.js';
+import * as volumeStop from './volume-stop.js';
+import * as botStart from './bot-start.js';
+import * as botStatus from './bot-status.js';
+import * as botStop from './bot-stop.js';
+import * as activityStart from './activity-start.js';
+import * as activityStatus from './activity-status.js';
+import * as activityStop from './activity-stop.js';
+import * as stealthFund from './stealth-fund.js';
 
 export function registerAllTools(server: McpServer, config: MCPConfig): void {
   const register = (tool: { toolName: string; toolDescription: string; toolSchema: { shape: Record<string, unknown> }; handler: (args: any, config: MCPConfig) => Promise<any> }) => {
@@ -31,4 +41,14 @@ export function registerAllTools(server: McpServer, config: MCPConfig): void {
   register(walletFund);
   register(walletSweep);
   register(positions);
+  register(volumeStart);
+  register(volumeStatus);
+  register(volumeStop);
+  register(botStart);
+  register(botStatus);
+  register(botStop);
+  register(activityStart);
+  register(activityStatus);
+  register(activityStop);
+  register(stealthFund);
 }

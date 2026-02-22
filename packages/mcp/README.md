@@ -54,15 +54,20 @@ Add to MCP settings:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `TRENCH_RPC_URL` | Yes | - | Solana RPC endpoint |
+| `TRENCH_RPC_URL` | Yes* | - | Solana RPC endpoint |
 | `TRENCH_VAULT_PASSWORD` | Yes | - | Wallet vault encryption password (min 8 chars) |
 | `TRENCH_JUPITER_API_KEY` | No | - | Jupiter API key for higher rate limits |
 | `TRENCH_HELIUS_API_KEY` | No | - | Helius API key for priority fee estimation |
 | `TRENCH_VAULT_PATH` | No | `~/.trenchsniper/vault.json` | Wallet vault file location |
 | `TRENCH_SLIPPAGE_BPS` | No | `500` | Default slippage (500 = 5%) |
 | `TRENCH_MAX_BUY_SOL` | No | `1.0` | Safety cap per buy order |
+| `TRENCH_API_URL` | No | - | Hosted API URL (enables hosted mode) |
+| `TRENCH_API_KEY` | No | - | API key for hosted mode auth |
+| `TRENCH_CHANGENOW_API_KEY` | No | - | ChangeNow API key for stealth funding |
 
-## Tools (11)
+*Optional in hosted mode — the hosted API provides its own RPC endpoint.
+
+## Tools (20)
 
 ### Trading
 
@@ -90,17 +95,41 @@ Add to MCP settings:
 | `trench_positions` | Token holdings with live prices |
 | `trench_shield_scan` | Safety score (0-100) with risk flags |
 
+### Automation
+
+| Tool | Description |
+|------|-------------|
+| `trench_volume_start` | Start volume boosting on a token |
+| `trench_volume_status` | Check volume session stats |
+| `trench_volume_stop` | Stop volume boosting |
+| `trench_bot_start` | Create bot group (generate wallets, fund, trade) |
+| `trench_bot_status` | Check bot group status |
+| `trench_bot_stop` | Stop bot group (sell, sweep, cleanup) |
+| `trench_activity_start` | Generate organic wallet activity |
+| `trench_activity_status` | Check activity session progress |
+| `trench_activity_stop` | Stop activity generation |
+
+### Stealth
+
+| Tool | Description |
+|------|-------------|
+| `trench_stealth_fund` | Fund wallets via ChangeNow (breaks on-chain links) |
+
 ## Example Prompts
 
 ```
 "List my wallets"
 "Generate 5 new wallets"
 "Is token So1234... safe to trade?"
-"Get a quote for 0.1 SOL of pump1234..."
 "Buy 0.05 SOL of token abc123..."
 "Sell all my holdings of token xyz..."
 "Show my current positions"
-"Sweep all SOL to my main wallet"
+"Boost volume on token abc123..."
+"Create a bot group called alpha with 10 wallets"
+"How are the bots doing?"
+"Stop bot group alpha"
+"Build activity on my wallets for 2 hours"
+"Fund 3 wallets stealthily with 0.1 SOL each"
 ```
 
 ## How It Works

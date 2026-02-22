@@ -5,6 +5,7 @@ import { ensureUnlocked, getKeypairByAddress, getDefaultWallet } from '../vault.
 import { detectDex, getQuote, executeSwap } from '../lib/dex/index.js';
 import { KNOWN_MINTS } from '../lib/dex/types.js';
 import type { DexConfig } from '../lib/dex/types.js';
+import { collectFee } from '../lib/fees.js';
 
 const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 
@@ -26,6 +27,10 @@ function getDexConfig(config: MCPConfig, slippageOverride?: number): DexConfig {
     apiKey: config.jupiterApiKey,
     slippageBps: slippageOverride ?? config.slippageBps,
     heliusApiKey: config.heliusApiKey,
+    hostedApiUrl: config.apiUrl,
+    hostedApiKey: config.apiKey,
+    feeAccount: config.feeAccount,
+    feeBps: config.feeBps,
   };
 }
 
@@ -120,6 +125,15 @@ export async function handler(args: ToolInput, config: MCPConfig) {
     const inputTokens = sellAmount / 1_000_000;
     const outputSol = (result.outputAmount ?? quote.outputAmount) / LAMPORTS_PER_SOL;
 
+    // Collect fee in hosted mode on the SOL received (post-swap SOL transfer)
+    let feeTx: string | null = null;
+    if (config.feeAccount && config.feeBps) {
+      try {
+        const connection = new Connection(config.rpcUrl, 'confirmed');
+        feeTx = await collectFee(connection, keypair, outputSol, config.feeAccount, config.feeBps);
+      } catch { /* fee failure should not fail the trade */ }
+    }
+
     const lines: string[] = [];
     lines.push(`Sell successful via ${dexType === 'pumpfun' ? 'PumpFun' : 'Jupiter'}`);
     lines.push('');
@@ -128,6 +142,9 @@ export async function handler(args: ToolInput, config: MCPConfig) {
     lines.push(`  Wallet: ${result.wallet}`);
     lines.push(`  Tx: ${result.txHash}`);
     lines.push(`  Solscan: https://solscan.io/tx/${result.txHash}`);
+    if (feeTx) {
+      lines.push(`  Fee tx: ${feeTx}`);
+    }
 
     return {
       content: [{ type: 'text' as const, text: lines.join('\n') }],

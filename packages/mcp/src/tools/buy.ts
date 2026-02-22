@@ -1,10 +1,11 @@
 import { z } from 'zod';
-import { LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { Connection, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import type { MCPConfig } from '../config.js';
 import { ensureUnlocked, getKeypairByAddress, getDefaultWallet } from '../vault.js';
 import { detectDex, getQuote, executeSwap } from '../lib/dex/index.js';
 import { KNOWN_MINTS } from '../lib/dex/types.js';
 import type { DexConfig } from '../lib/dex/types.js';
+import { collectFee } from '../lib/fees.js';
 
 export const toolName = 'trench_buy';
 export const toolDescription = 'Buy a token with SOL. Auto-routes between PumpFun and Jupiter. Enforces a safety cap (maxBuySol from config).';
@@ -24,6 +25,10 @@ function getDexConfig(config: MCPConfig, slippageOverride?: number): DexConfig {
     apiKey: config.jupiterApiKey,
     slippageBps: slippageOverride ?? config.slippageBps,
     heliusApiKey: config.heliusApiKey,
+    hostedApiUrl: config.apiUrl,
+    hostedApiKey: config.apiKey,
+    feeAccount: config.feeAccount,
+    feeBps: config.feeBps,
   };
 }
 
@@ -79,6 +84,15 @@ export async function handler(args: ToolInput, config: MCPConfig) {
       };
     }
 
+    // Collect fee in hosted mode (post-swap SOL transfer)
+    let feeTx: string | null = null;
+    if (config.feeAccount && config.feeBps) {
+      try {
+        const connection = new Connection(config.rpcUrl, 'confirmed');
+        feeTx = await collectFee(connection, keypair, amountSol, config.feeAccount, config.feeBps);
+      } catch { /* fee failure should not fail the trade */ }
+    }
+
     const outputTokens = (result.outputAmount ?? quote.outputAmount) / 1_000_000;
     const lines: string[] = [];
     lines.push(`Buy successful via ${dexType === 'pumpfun' ? 'PumpFun' : 'Jupiter'}`);
@@ -88,6 +102,9 @@ export async function handler(args: ToolInput, config: MCPConfig) {
     lines.push(`  Wallet: ${result.wallet}`);
     lines.push(`  Tx: ${result.txHash}`);
     lines.push(`  Solscan: https://solscan.io/tx/${result.txHash}`);
+    if (feeTx) {
+      lines.push(`  Fee tx: ${feeTx}`);
+    }
 
     return {
       content: [{ type: 'text' as const, text: lines.join('\n') }],

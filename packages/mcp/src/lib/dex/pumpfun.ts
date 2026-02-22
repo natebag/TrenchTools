@@ -172,49 +172,77 @@ export const pumpfunSwapper: DexSwapper = {
         tokenAmount: number;
       };
 
-      // Convert slippage from bps to percentage for PumpPortal API
-      const slippagePercent = (quote.slippageBps ?? 500) / 100;
+      let txBytes: Uint8Array;
 
-      // For buys: cap the SOL amount to leave room for rent + fees
-      let buyAmountSol = raw.solAmountLamports / LAMPORTS_PER_SOL;
-      if (raw.isBuying) {
-        const balance = await connection.getBalance(wallet.publicKey, 'confirmed');
-        const balanceSol = balance / LAMPORTS_PER_SOL;
-        // Reserve 0.01 SOL for rent-exempt minimum + tx fees + priority fee
-        const maxSpendable = balanceSol - 0.01;
-        if (maxSpendable <= 0) {
-          throw new Error(`Wallet has only ${balanceSol.toFixed(4)} SOL — need at least 0.01 SOL reserve for rent/fees`);
+      if (config.hostedApiUrl && config.hostedApiKey) {
+        // Hosted mode: get unsigned transaction from hosted API
+        const resp = await fetch(`${config.hostedApiUrl}/api/swap/execute`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${config.hostedApiKey}`,
+          },
+          body: JSON.stringify({
+            dex: 'pumpfun',
+            quoteResponse: quote.raw,
+            userPublicKey: walletAddress,
+            slippageBps: quote.slippageBps,
+          }),
+        });
+        if (!resp.ok) {
+          const errorText = await resp.text();
+          throw new Error(`Hosted PumpFun swap failed (${resp.status}): ${errorText}`);
         }
-        buyAmountSol = Math.min(buyAmountSol, maxSpendable);
+        const data = await resp.json() as { swapTransaction: string };
+        txBytes = new Uint8Array(Buffer.from(data.swapTransaction, 'base64'));
+      } else {
+        // Direct mode: hit PumpPortal API directly
+
+        // Convert slippage from bps to percentage for PumpPortal API
+        const slippagePercent = (quote.slippageBps ?? 500) / 100;
+
+        // For buys: cap the SOL amount to leave room for rent + fees
+        let buyAmountSol = raw.solAmountLamports / LAMPORTS_PER_SOL;
+        if (raw.isBuying) {
+          const balance = await connection.getBalance(wallet.publicKey, 'confirmed');
+          const balanceSol = balance / LAMPORTS_PER_SOL;
+          // Reserve 0.01 SOL for rent-exempt minimum + tx fees + priority fee
+          const maxSpendable = balanceSol - 0.01;
+          if (maxSpendable <= 0) {
+            throw new Error(`Wallet has only ${balanceSol.toFixed(4)} SOL — need at least 0.01 SOL reserve for rent/fees`);
+          }
+          buyAmountSol = Math.min(buyAmountSol, maxSpendable);
+        }
+
+        // For sells: PumpPortal expects token amount in human-readable units,
+        // not raw smallest-denomination. PumpFun tokens always have 6 decimals.
+        const sellTokenAmount = raw.tokenAmount / 1_000_000;
+
+        // Use PumpPortal API to build the transaction (same pattern as Jupiter)
+        const response = await fetch(PUMPPORTAL_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            publicKey: walletAddress,
+            action: raw.isBuying ? 'buy' : 'sell',
+            mint: raw.tokenMint,
+            amount: raw.isBuying ? buyAmountSol : sellTokenAmount,
+            denominatedInSol: raw.isBuying ? 'true' : 'false',
+            slippage: slippagePercent,
+            priorityFee: 0.00001,
+            pool: 'pump',
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`PumpPortal API failed (${response.status}): ${errorText}`);
+        }
+
+        // Response is raw bytes of a VersionedTransaction
+        txBytes = new Uint8Array(await response.arrayBuffer());
       }
 
-      // For sells: PumpPortal expects token amount in human-readable units,
-      // not raw smallest-denomination. PumpFun tokens always have 6 decimals.
-      const sellTokenAmount = raw.tokenAmount / 1_000_000;
-
-      // Use PumpPortal API to build the transaction (same pattern as Jupiter)
-      const response = await fetch(PUMPPORTAL_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          publicKey: walletAddress,
-          action: raw.isBuying ? 'buy' : 'sell',
-          mint: raw.tokenMint,
-          amount: raw.isBuying ? buyAmountSol : sellTokenAmount,
-          denominatedInSol: raw.isBuying ? 'true' : 'false',
-          slippage: slippagePercent,
-          priorityFee: 0.00001,
-          pool: 'pump',
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`PumpPortal API failed (${response.status}): ${errorText}`);
-      }
-
-      // Response is raw bytes of a VersionedTransaction
-      const txBytes = new Uint8Array(await response.arrayBuffer());
       const tx = VersionedTransaction.deserialize(txBytes);
 
       // Sign with wallet
