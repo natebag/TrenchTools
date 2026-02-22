@@ -1,6 +1,6 @@
 {
   "name": "trenchsniper-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server for TrenchSniper — let AI agents trade on Solana",
   "type": "module",
   "main": "./dist/index.js",

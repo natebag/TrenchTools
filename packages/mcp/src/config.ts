@@ -14,7 +14,7 @@ export interface MCPConfig {
   changeNowApiKey?: string;
   // Hosted mode fields (default)
   apiUrl: string;         // defaults to api.trenchtools.io
-  apiKey?: string;        // TRENCH_API_KEY — required for hosted mode
+  apiKey?: string;        // optional — for future account-linked features
   isHosted: boolean;      // true unless TRENCH_SELF_HOSTED=true
   // Runtime fields populated from /api/config:
   hostedRpcUrl?: string;
@@ -32,13 +32,6 @@ export function loadConfig(): MCPConfig {
 
   if (!vaultPassword || vaultPassword.length < 8) {
     console.error('Error: TRENCH_VAULT_PASSWORD is required (min 8 characters). Set it in your MCP server env config.');
-    process.exit(1);
-  }
-
-  // Hosted mode requires an API key
-  if (isHosted && !apiKey) {
-    console.error('Error: TRENCH_API_KEY is required. Get one from your TrenchTools dashboard (trenchtools.io).');
-    console.error('For self-hosted mode, set TRENCH_SELF_HOSTED=true and provide TRENCH_RPC_URL.');
     process.exit(1);
   }
 
