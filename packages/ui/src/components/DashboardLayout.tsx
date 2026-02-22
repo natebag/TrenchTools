@@ -7,7 +7,6 @@ import {
   Settings, 
   Menu,
   Activity,
-  Zap,
   Eye,
   Volume2,
   RefreshCw,
@@ -83,12 +82,10 @@ function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) 
         {/* Logo */}
         <div className="p-6 border-b border-slate-800">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
-              <Zap className="w-6 h-6 text-white" />
-            </div>
+            <img src="/logo.png" alt="TrenchTools" className="w-10 h-10 rounded-xl" />
             <div>
-              <h1 className="text-xl font-bold text-white">TrenchSniper</h1>
-              <p className="text-xs text-slate-400">Operating System</p>
+              <h1 className="text-xl font-bold text-white">TrenchTools</h1>
+              <p className="text-xs text-slate-400">Trading Suite</p>
             </div>
           </div>
         </div>

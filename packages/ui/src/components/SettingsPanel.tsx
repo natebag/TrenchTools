@@ -65,7 +65,7 @@ export function SettingsPanel() {
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-white">Settings</h2>
-        <p className="text-slate-400">Configure your TrenchSniper instance</p>
+        <p className="text-slate-400">Configure your TrenchTools instance</p>
       </div>
 
       <div className="card">
