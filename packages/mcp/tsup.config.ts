@@ -9,4 +9,6 @@ export default defineConfig({
   clean: true,
   target: 'node20',
   banner: { js: '#!/usr/bin/env node' },
+  // Bundle @trenchtools/core into the output so we only publish one package
+  noExternal: ['@trenchtools/core'],
 });

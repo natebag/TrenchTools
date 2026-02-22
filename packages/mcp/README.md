@@ -6,15 +6,12 @@ Works with Claude Desktop, Cursor, VS Code, Cline, Windsurf, and any MCP-compati
 
 ## Quick Start
 
-```bash
-npx trenchsniper-mcp
-```
-
-## Setup
+1. Get an API key from [trenchtools.io](https://trenchtools.io) (Settings > API Keys)
+2. Add to your AI client config:
 
 ### Claude Desktop
 
-Add to `claude_desktop_config.json`:
+Edit `claude_desktop_config.json`:
 
 ```json
 {
@@ -23,7 +20,7 @@ Add to `claude_desktop_config.json`:
       "command": "npx",
       "args": ["-y", "trenchsniper-mcp"],
       "env": {
-        "TRENCH_RPC_URL": "https://api.mainnet-beta.solana.com",
+        "TRENCH_API_KEY": "trench_sk_your_key_here",
         "TRENCH_VAULT_PASSWORD": "your-secure-password"
       }
     }
@@ -33,39 +30,23 @@ Add to `claude_desktop_config.json`:
 
 ### Cursor / VS Code
 
-Add to MCP settings:
+Same JSON format — paste into MCP settings.
 
-```json
-{
-  "mcpServers": {
-    "trenchsniper": {
-      "command": "npx",
-      "args": ["-y", "trenchsniper-mcp"],
-      "env": {
-        "TRENCH_RPC_URL": "https://api.mainnet-beta.solana.com",
-        "TRENCH_VAULT_PASSWORD": "your-secure-password"
-      }
-    }
-  }
-}
-```
+That's it. The server connects to TrenchTools infrastructure automatically. No RPC URL or Jupiter keys needed.
 
 ## Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `TRENCH_RPC_URL` | Yes* | - | Solana RPC endpoint |
+| `TRENCH_API_KEY` | Yes | - | API key from your TrenchTools dashboard |
 | `TRENCH_VAULT_PASSWORD` | Yes | - | Wallet vault encryption password (min 8 chars) |
-| `TRENCH_JUPITER_API_KEY` | No | - | Jupiter API key for higher rate limits |
-| `TRENCH_HELIUS_API_KEY` | No | - | Helius API key for priority fee estimation |
 | `TRENCH_VAULT_PATH` | No | `~/.trenchsniper/vault.json` | Wallet vault file location |
 | `TRENCH_SLIPPAGE_BPS` | No | `500` | Default slippage (500 = 5%) |
 | `TRENCH_MAX_BUY_SOL` | No | `1.0` | Safety cap per buy order |
-| `TRENCH_API_URL` | No | - | Hosted API URL (enables hosted mode) |
-| `TRENCH_API_KEY` | No | - | API key for hosted mode auth |
-| `TRENCH_CHANGENOW_API_KEY` | No | - | ChangeNow API key for stealth funding |
 
-*Optional in hosted mode — the hosted API provides its own RPC endpoint.
+### Self-Hosting
+
+To run fully self-hosted (your own RPC, no fees), see the [Self-Hosting Guide](https://github.com/0xTrench/TrenchSniper-OS/blob/main/packages/mcp/SELF_HOSTING.md).
 
 ## Tools (20)
 
@@ -135,7 +116,7 @@ Add to MCP settings:
 ## How It Works
 
 - **Auto-routing**: Automatically detects PumpFun bonding curve tokens vs graduated Jupiter tokens
-- **Wallet vault**: AES-256-GCM encrypted wallet storage on disk (not browser localStorage)
+- **Wallet vault**: AES-256-GCM encrypted wallet storage on disk
 - **Safety cap**: Configurable max SOL per buy to prevent fat-finger errors
 - **Shield scanning**: On-chain analysis of mint authority, freeze authority, liquidity, and honeypot risk
 

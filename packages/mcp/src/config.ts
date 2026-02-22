@@ -1,6 +1,8 @@
 import * as os from 'os';
 import * as path from 'path';
 
+const DEFAULT_API_URL = 'https://api.trenchtools.io';
+
 export interface MCPConfig {
   rpcUrl: string;
   vaultPassword: string;
@@ -9,11 +11,11 @@ export interface MCPConfig {
   vaultPath: string;
   slippageBps: number;
   maxBuySol: number;
-  changeNowApiKey?: string; // TRENCH_CHANGENOW_API_KEY
-  // Hosted mode fields
-  apiUrl?: string;      // TRENCH_API_URL
-  apiKey?: string;      // TRENCH_API_KEY
-  isHosted: boolean;    // true when apiUrl is set
+  changeNowApiKey?: string;
+  // Hosted mode fields (default)
+  apiUrl: string;         // defaults to api.trenchtools.io
+  apiKey?: string;        // TRENCH_API_KEY — required for hosted mode
+  isHosted: boolean;      // true unless TRENCH_SELF_HOSTED=true
   // Runtime fields populated from /api/config:
   hostedRpcUrl?: string;
   feeAccount?: string;
@@ -21,19 +23,28 @@ export interface MCPConfig {
 }
 
 export function loadConfig(): MCPConfig {
-  const rpcUrl = process.env.TRENCH_RPC_URL;
   const vaultPassword = process.env.TRENCH_VAULT_PASSWORD;
-  const apiUrl = process.env.TRENCH_API_URL || undefined;
+  const selfHosted = process.env.TRENCH_SELF_HOSTED === 'true';
+  const apiUrl = process.env.TRENCH_API_URL || DEFAULT_API_URL;
   const apiKey = process.env.TRENCH_API_KEY || undefined;
-  const isHosted = !!apiUrl;
+  const rpcUrl = process.env.TRENCH_RPC_URL || '';
+  const isHosted = !selfHosted;
 
-  // RPC URL is only required when NOT in hosted mode (hosted mode fetches RPC from /api/config)
-  if (!rpcUrl && !isHosted) {
-    console.error('Error: TRENCH_RPC_URL is required (or set TRENCH_API_URL for hosted mode). Set it in your MCP server env config.');
-    process.exit(1);
-  }
   if (!vaultPassword || vaultPassword.length < 8) {
     console.error('Error: TRENCH_VAULT_PASSWORD is required (min 8 characters). Set it in your MCP server env config.');
+    process.exit(1);
+  }
+
+  // Hosted mode requires an API key
+  if (isHosted && !apiKey) {
+    console.error('Error: TRENCH_API_KEY is required. Get one from your TrenchTools dashboard (trenchtools.io).');
+    console.error('For self-hosted mode, set TRENCH_SELF_HOSTED=true and provide TRENCH_RPC_URL.');
+    process.exit(1);
+  }
+
+  // Self-hosted mode requires an RPC URL
+  if (!isHosted && !rpcUrl) {
+    console.error('Error: TRENCH_RPC_URL is required for self-hosted mode.');
     process.exit(1);
   }
 
@@ -43,7 +54,7 @@ export function loadConfig(): MCPConfig {
     : vaultPathRaw;
 
   return {
-    rpcUrl: rpcUrl || '', // Will be populated from hosted config if empty
+    rpcUrl,
     vaultPassword,
     jupiterApiKey: process.env.TRENCH_JUPITER_API_KEY || undefined,
     heliusApiKey: process.env.TRENCH_HELIUS_API_KEY || undefined,
