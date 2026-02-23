@@ -38,9 +38,13 @@ coverage/
 # Turbo
 .turbo/
 
-# Wallet exports (security)
+# Wallet / keypair files (security)
 *.wallet.json
 *.wallet.enc
+*wallet*.json
+*keypair*.json
+mainnet-*.json
+devnet-*.json
 wallets/
 keys/
 

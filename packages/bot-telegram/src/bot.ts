@@ -24,13 +24,27 @@ export class TrenchBot {
   }
 
   private setupHandlers(): void {
+    // Fail-closed: reject all commands from non-admin users
+    this.bot.use(async (ctx, next) => {
+      const userId = ctx.from?.id;
+      if (!userId || this.config.adminIds.length === 0 || !this.config.adminIds.includes(userId)) {
+        // Allow /start to show a message, reject everything else
+        if ((ctx.message as any)?.text?.startsWith('/start')) {
+          await ctx.reply('⛔ Access denied. Your Telegram ID is not in the admin list.\n\nSet TELEGRAM_ADMIN_IDS in your .env to enable access.');
+          return;
+        }
+        return; // Silently ignore non-admin messages
+      }
+      return next();
+    });
+
     this.bot.command('start', async (ctx) => this.handleStart(ctx));
     this.bot.command('help', async (ctx) => this.handleHelp(ctx));
-    
+
     if (this.config.features.sniperControl) registerSniperCommand(this.bot, this.alertManager);
     if (this.config.features.portfolio) registerPortfolioCommand(this.bot);
     if (this.config.features.alerts) registerAlertsCommand(this.bot);
-    
+
     this.bot.command('broadcast', async (ctx) => this.handleBroadcast(ctx));
     this.bot.catch((err: any, ctx) => {
       console.error('Bot error:', err);

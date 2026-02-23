@@ -35,7 +35,7 @@ export function registerSniperCommand(
 
 🟢 <b>Auto-Sniper:</b> RUNNING
 📡 <b>Mempool:</b> Listening
-🚀 <b>Jito:</b> Enabled (10000 lamports)
+🚀 <b>Jito:</b> Not configured
 
 <b>Recent Activity:</b>
 • Snipes today: 3

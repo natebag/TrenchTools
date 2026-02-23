@@ -34,7 +34,7 @@ While paid tools like Proxima charge hundreds per month for access, TrenchTools 
 | **Raydium Trading** | AMM pool swaps with quote calculation |
 | **Meteora DLMM** | Concentrated liquidity pool trading |
 | **Smart Router** | Auto-route to best DEX with migration detection |
-| **Jito Bundles** | MEV protection through Jito bundle builder |
+| **Jito Bundles** | MEV protection through Jito bundle builder (coming soon) |
 
 ### 🤖 Orchestrator
 | Feature | Description |

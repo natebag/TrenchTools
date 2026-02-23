@@ -26,6 +26,10 @@ export function getConfig(): BotConfig {
     .map(id => parseInt(id.trim()))
     .filter(id => !isNaN(id));
 
+  if (adminIds.length === 0) {
+    console.warn('⚠️  TELEGRAM_ADMIN_IDS is empty — bot will reject all commands. Set admin IDs to enable access.');
+  }
+
   return {
     token,
     adminIds,
