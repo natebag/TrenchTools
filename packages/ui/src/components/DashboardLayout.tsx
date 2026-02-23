@@ -17,7 +17,8 @@ import {
   Plus,
   Fish,
   Rocket,
-  ArrowRightLeft
+  ArrowRightLeft,
+  TrendingUp
 } from 'lucide-react'
 import { WithdrawModal } from './WithdrawModal'
 import { WalletProvider } from '@/context/WalletContext'
@@ -44,6 +45,7 @@ import { TokenChart } from './TokenChart'
 import { WhaleAlerts } from './WhaleAlerts'
 import { LaunchControl } from './LaunchControl'
 import { BridgeControl } from './BridgeControl'
+import { PolymarketControl } from './PolymarketControl'
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: Activity, description: 'Overview & quick actions' },
@@ -54,6 +56,7 @@ const navItems = [
   { path: '/whales', label: 'Whales', icon: Fish, description: 'Whale alerts' },
   { path: '/pnl', label: 'P&L', icon: LineChart, description: 'Portfolio analytics' },
   { path: '/bridge', label: 'Bridge', icon: ArrowRightLeft, description: 'Cross-chain bridging' },
+  { path: '/polymarket', label: 'Polymarket', icon: TrendingUp, description: 'Prediction markets' },
   { path: '/activity', label: 'Activity', icon: Activity, description: 'Generate wallet tx history' },
   { path: '/market-making', label: 'Market Making', icon: Volume2, description: 'Volume & automated bots' },
   { path: '/detection', label: 'Detection', icon: Eye, description: 'Manipulation analysis' },
@@ -479,6 +482,7 @@ function AppContent() {
       case '/snipe': return <SniperControl />
       case '/launch': return <LaunchControl />
       case '/bridge': return <BridgeControl />
+      case '/polymarket': return <PolymarketControl />
       case '/shield': return <ShieldScanner />
       case '/whales': return <WhaleAlerts />
       case '/pnl': return <PnLCharts />

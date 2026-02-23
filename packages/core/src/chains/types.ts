@@ -8,7 +8,7 @@
 
 // ── Chain Identifiers ──
 
-export type ChainId = 'solana' | 'bsc' | 'base' | 'sui';
+export type ChainId = 'solana' | 'bsc' | 'base' | 'polygon' | 'sui';
 export type ChainFamily = 'solana' | 'evm' | 'sui';
 
 // ── Chain Configuration ──
@@ -81,6 +81,21 @@ export const CHAINS: Record<ChainId, ChainConfig> = {
     caip2: 'eip155:8453',
     evmChainId: 8453,
   },
+  polygon: {
+    id: 'polygon',
+    family: 'evm',
+    name: 'Polygon',
+    nativeToken: 'POL',
+    nativeDecimals: 18,
+    explorerUrl: 'https://polygonscan.com',
+    explorerTxPath: '/tx/',
+    explorerAddressPath: '/address/',
+    explorerTokenPath: '/token/',
+    defaultRpcUrl: 'https://polygon-rpc.com',
+    color: '#8247E5',
+    caip2: 'eip155:137',
+    evmChainId: 137,
+  },
   sui: {
     id: 'sui',
     family: 'sui',
@@ -99,10 +114,10 @@ export const CHAINS: Record<ChainId, ChainConfig> = {
 
 // ── All chain IDs (useful for iteration) ──
 
-export const ALL_CHAIN_IDS: ChainId[] = ['solana', 'bsc', 'base', 'sui'];
+export const ALL_CHAIN_IDS: ChainId[] = ['solana', 'bsc', 'base', 'polygon', 'sui'];
 
 /** Chains that are actually implemented and available right now */
-export const ACTIVE_CHAIN_IDS: ChainId[] = ['solana', 'bsc', 'base', 'sui'];
+export const ACTIVE_CHAIN_IDS: ChainId[] = ['solana', 'bsc', 'base', 'polygon', 'sui'];
 
 // ── Utility Functions ──
 
@@ -199,6 +214,19 @@ export const CHAIN_FEATURES: Record<ChainId, ChainFeatures> = {
     botGroups: true,
     activityGen: true,
     launch: true,
+    claimFees: false,
+    ghostHolders: false,
+    stealthFund: true,
+    shield: true,
+    bridge: true,
+  },
+  polygon: {
+    trading: true,
+    volumeBoost: true,
+    sniping: false,
+    botGroups: true,
+    activityGen: true,
+    launch: false,
     claimFees: false,
     ghostHolders: false,
     stealthFund: true,

@@ -6,12 +6,13 @@ import type { ChainId } from '../chains/types.js';
 
 // ── Li.Fi Chain Mappings ──
 
-export type LifiChainKey = 'SOL' | 'BSC' | 'BAS' | 'SUI';
+export type LifiChainKey = 'SOL' | 'BSC' | 'BAS' | 'POL' | 'SUI';
 
 export const LIFI_CHAIN_MAP: Record<ChainId, LifiChainKey> = {
   solana: 'SOL',
   bsc: 'BSC',
   base: 'BAS',
+  polygon: 'POL',
   sui: 'SUI',
 };
 
@@ -19,6 +20,7 @@ export const LIFI_CHAIN_REVERSE: Record<LifiChainKey, ChainId> = {
   SOL: 'solana',
   BSC: 'bsc',
   BAS: 'base',
+  POL: 'polygon',
   SUI: 'sui',
 };
 
@@ -27,6 +29,7 @@ export const LIFI_NATIVE_TOKENS: Record<ChainId, string> = {
   solana: '11111111111111111111111111111111',
   bsc: '0x0000000000000000000000000000000000000000',
   base: '0x0000000000000000000000000000000000000000',
+  polygon: '0x0000000000000000000000000000000000000000',
   sui: '0x2::sui::SUI',
 };
 

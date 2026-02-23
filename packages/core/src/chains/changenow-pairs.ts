@@ -20,5 +20,6 @@ export const CHANGENOW_PAIRS: Record<ChainId, ChangeNowPair> = {
   solana: { from: 'usdcsol', to: 'sol' },
   bsc:    { from: 'usdcbsc', to: 'bnb' },
   base:   { from: 'usdcbase', to: 'eth', network: 'base' },
+  polygon: { from: 'usdcmatic', to: 'maticpolygon' },
   sui:    { from: 'usdc', to: 'sui' }, // placeholder — verify when SUI goes live
 };

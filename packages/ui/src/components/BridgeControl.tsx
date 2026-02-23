@@ -62,6 +62,7 @@ const AMOUNT_PRESETS: Record<ChainId, number[]> = {
   solana: [0.1, 0.25, 0.5, 1.0],
   bsc: [0.01, 0.05, 0.1, 0.25],
   base: [0.005, 0.01, 0.025, 0.05],
+  polygon: [1, 5, 10, 25],
   sui: [1, 5, 10, 25],
 };
 

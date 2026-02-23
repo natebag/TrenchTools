@@ -20,6 +20,7 @@ export interface MCPConfig {
   // EVM chain RPC URLs
   bscRpcUrl?: string;
   baseRpcUrl?: string;
+  polygonRpcUrl?: string;
   // (OpenOcean requires no API key)
   // Hosted mode fields (default)
   apiUrl: string;         // defaults to api.trenchtools.io
@@ -93,6 +94,7 @@ export function loadConfig(): MCPConfig {
     changeNowApiKey: process.env.TRENCH_CHANGENOW_API_KEY || undefined,
     bscRpcUrl: process.env.TRENCH_BSC_RPC_URL || undefined,
     baseRpcUrl: process.env.TRENCH_BASE_RPC_URL || undefined,
+    polygonRpcUrl: process.env.TRENCH_POLYGON_RPC_URL || undefined,
     apiUrl,
     apiKey,
     isHosted,
@@ -108,6 +110,8 @@ export function getRpcUrlForChain(config: MCPConfig, chain: ChainId): string {
       return config.bscRpcUrl || 'https://bsc-dataseed.binance.org';
     case 'base':
       return config.baseRpcUrl || 'https://mainnet.base.org';
+    case 'polygon':
+      return config.polygonRpcUrl || 'https://polygon-rpc.com';
     case 'solana':
     default:
       return config.rpcUrl;

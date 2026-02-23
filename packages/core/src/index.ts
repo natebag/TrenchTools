@@ -166,3 +166,6 @@ export * from './detection/index.js';
 
 // Bridge - Cross-chain bridging via Li.Fi
 export * from './bridge/index.js';
+
+// Polymarket - Prediction market trading on Polygon
+export * from './polymarket/index.js';

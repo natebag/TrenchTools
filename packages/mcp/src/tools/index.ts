@@ -24,6 +24,10 @@ import * as activityStop from './activity-stop.js';
 import * as stealthFund from './stealth-fund.js';
 import * as launch from './launch.js';
 import * as claimFees from './claim-fees.js';
+import * as polymarketSearch from './polymarket-search.js';
+import * as polymarketBuy from './polymarket-buy.js';
+import * as polymarketSell from './polymarket-sell.js';
+import * as polymarketPositions from './polymarket-positions.js';
 
 export function registerAllTools(server: McpServer, config: MCPConfig): void {
   const register = (tool: { toolName: string; toolDescription: string; toolSchema: { shape: Record<string, unknown> }; handler: (args: any, config: MCPConfig) => Promise<any> }) => {
@@ -55,4 +59,8 @@ export function registerAllTools(server: McpServer, config: MCPConfig): void {
   register(stealthFund);
   register(launch);
   register(claimFees);
+  register(polymarketSearch);
+  register(polymarketBuy);
+  register(polymarketSell);
+  register(polymarketPositions);
 }
