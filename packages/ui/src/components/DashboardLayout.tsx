@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
-import { 
-  Wallet, 
-  Target, 
-  Shield, 
-  LineChart, 
-  Settings, 
+import {
+  Wallet,
+  Target,
+  Shield,
+  LineChart,
+  Settings,
   Menu,
   Activity,
   Eye,
@@ -16,7 +16,8 @@ import {
   ArrowUp,
   Plus,
   Fish,
-  Rocket
+  Rocket,
+  ArrowRightLeft
 } from 'lucide-react'
 import { WithdrawModal } from './WithdrawModal'
 import { WalletProvider } from '@/context/WalletContext'
@@ -42,6 +43,7 @@ import { MarketMaking } from './MarketMaking'
 import { TokenChart } from './TokenChart'
 import { WhaleAlerts } from './WhaleAlerts'
 import { LaunchControl } from './LaunchControl'
+import { BridgeControl } from './BridgeControl'
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: Activity, description: 'Overview & quick actions' },
@@ -51,6 +53,7 @@ const navItems = [
   { path: '/shield', label: 'Shield', icon: Shield, description: 'Security scanner' },
   { path: '/whales', label: 'Whales', icon: Fish, description: 'Whale alerts' },
   { path: '/pnl', label: 'P&L', icon: LineChart, description: 'Portfolio analytics' },
+  { path: '/bridge', label: 'Bridge', icon: ArrowRightLeft, description: 'Cross-chain bridging' },
   { path: '/activity', label: 'Activity', icon: Activity, description: 'Generate wallet tx history' },
   { path: '/market-making', label: 'Market Making', icon: Volume2, description: 'Volume & automated bots' },
   { path: '/detection', label: 'Detection', icon: Eye, description: 'Manipulation analysis' },
@@ -475,6 +478,7 @@ function AppContent() {
       case '/wallets': return <TreasuryWalletManager />
       case '/snipe': return <SniperControl />
       case '/launch': return <LaunchControl />
+      case '/bridge': return <BridgeControl />
       case '/shield': return <ShieldScanner />
       case '/whales': return <WhaleAlerts />
       case '/pnl': return <PnLCharts />

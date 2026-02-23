@@ -163,3 +163,6 @@ export * from './orchestrator/index.js';
 
 // Detection - Manipulation detection (Powered by Allium)
 export * from './detection/index.js';
+
+// Bridge - Cross-chain bridging via Li.Fi
+export * from './bridge/index.js';

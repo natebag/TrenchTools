@@ -162,6 +162,7 @@ export interface ChainFeatures {
   ghostHolders: boolean;
   stealthFund: boolean;
   shield: boolean;
+  bridge: boolean;
 }
 
 export const CHAIN_FEATURES: Record<ChainId, ChainFeatures> = {
@@ -176,6 +177,7 @@ export const CHAIN_FEATURES: Record<ChainId, ChainFeatures> = {
     ghostHolders: true,
     stealthFund: true,
     shield: true,
+    bridge: true,
   },
   bsc: {
     trading: true,
@@ -188,6 +190,7 @@ export const CHAIN_FEATURES: Record<ChainId, ChainFeatures> = {
     ghostHolders: false,
     stealthFund: true,
     shield: true,
+    bridge: true,
   },
   base: {
     trading: true,
@@ -200,6 +203,7 @@ export const CHAIN_FEATURES: Record<ChainId, ChainFeatures> = {
     ghostHolders: false,
     stealthFund: true,
     shield: true,
+    bridge: true,
   },
   sui: {
     trading: true,
@@ -212,6 +216,7 @@ export const CHAIN_FEATURES: Record<ChainId, ChainFeatures> = {
     ghostHolders: false,
     stealthFund: true,
     shield: true,
+    bridge: true,
   },
 };
 
