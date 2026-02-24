@@ -37,10 +37,13 @@ import { isStealthEnabled, isStealthAvailable } from '@/lib/changenow';
 import { useStealthFund, type StealthDestination } from '@/hooks/useStealthFund';
 import { useTxHistory } from '@/context/TxHistoryContext';
 import { getQuote as dexGetQuote, executeSwap as dexExecuteSwap, type DexConfig } from '@/lib/dex';
+import { getBondingCurveAddress } from '@/lib/dex/pumpfun';
 import { isLaunchWallet, getLaunchesForWallet } from '@/lib/launchWalletGuard';
 import { getWalletManager } from '@/lib/browserWallet';
 import { isEvmChain } from '@trenchtools/core';
 import { Connection, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL, ParsedTransactionWithMeta, VersionedTransaction } from '@solana/web3.js';
+
+const IS_HOSTED = import.meta.env.VITE_HOSTED === 'true';
 
 // Transaction history types
 interface TransactionInfo {
@@ -106,6 +109,23 @@ async function getViemChain(chainId: string) {
   if (chainId === 'bsc') return chains.bsc;
   if (chainId === 'polygon') return chains.polygon;
   return chains.base;
+}
+
+/** Auto-detect whether a token is on PumpFun bonding curve (not graduated) */
+async function detectUsePumpFun(mint: string, rpcUrl: string): Promise<boolean> {
+  try {
+    const connection = new Connection(rpcUrl, 'confirmed');
+    const mintPubkey = new PublicKey(mint);
+    const bondingCurve = getBondingCurveAddress(mintPubkey);
+    const accountInfo = await connection.getAccountInfo(bondingCurve);
+    if (accountInfo && accountInfo.data && accountInfo.data.length >= 49) {
+      const complete = (accountInfo.data as Buffer).readUInt8(48) === 1;
+      return !complete; // Use PumpFun only if NOT graduated
+    }
+    return false; // No bonding curve found → use Jupiter
+  } catch {
+    return false; // Detection failed → default to Jupiter
+  }
 }
 
 export function TreasuryWalletManager() {
@@ -243,82 +263,82 @@ export function TreasuryWalletManager() {
 
       let sold = 0;
       let errors = 0;
+      const jupiterApiKey = localStorage.getItem('jupiter_api_key') || '';
+      const heliusApiKey = (localStorage.getItem('helius_api_key') || undefined) as string | undefined;
       for (const token of holdings) {
         try {
-          // Try Jupiter first
-          const jupiterApiKey = localStorage.getItem('jupiter_api_key') || '';
-          const quoteUrl = `${JUPITER_API_URL}/quote?` + new URLSearchParams({
-            inputMint: token.mint,
-            outputMint: WSOL_MINT,
-            amount: token.amountRaw,
-            slippageBps: '200',
-          });
-          const quoteResponse = await fetch(quoteUrl, {
-            headers: jupiterApiKey ? { 'x-api-key': jupiterApiKey } : {},
-          });
-          if (!quoteResponse.ok) throw new Error('Jupiter quote failed');
+          // Auto-detect DEX
+          const usePumpFun = await detectUsePumpFun(token.mint, rpcUrl);
 
-          const quote = await quoteResponse.json();
-          const swapResponse = await fetch(`${JUPITER_API_URL}/swap`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(jupiterApiKey ? { 'x-api-key': jupiterApiKey } : {}),
-            },
-            body: JSON.stringify({
-              quoteResponse: quote,
-              userPublicKey: signer.publicKey.toBase58(),
-              wrapAndUnwrapSol: true,
-              dynamicComputeUnitLimit: true,
-              prioritizationFeeLamports: 'auto',
-            }),
-          });
-          if (!swapResponse.ok) throw new Error('Jupiter swap failed');
-
-          const swapPayload = await swapResponse.json();
-          const transactionBuffer = Buffer.from(swapPayload.swapTransaction, 'base64');
-          const transaction = VersionedTransaction.deserialize(transactionBuffer);
-          transaction.sign([signer]);
-
-          const signature = await connection.sendTransaction(transaction, { skipPreflight: false, maxRetries: 3 });
-          const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
-          await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
-          sold++;
-
-          addTrade({
-            timestamp: Date.now(),
-            type: 'sell',
-            tokenMint: token.mint,
-            amount: token.amountUi,
-            wallet: wallet.address,
-            txHash: signature,
-            status: 'success',
-            source: 'treasury',
-          });
-        } catch {
-          // Fallback: PumpFun
-          try {
-            const pfConfig: DexConfig = { rpcUrl, slippageBps: 200, heliusApiKey: (localStorage.getItem('helius_api_key') || undefined) as string | undefined };
+          if (usePumpFun) {
+            const pfConfig: DexConfig = { rpcUrl, slippageBps: 200, heliusApiKey };
             const pfQuote = await dexGetQuote('pumpfun', token.mint, WSOL_MINT, parseInt(token.amountRaw), pfConfig);
             const pfResult = await dexExecuteSwap(pfQuote, signer, pfConfig);
-            if (pfResult.success) {
-              sold++;
-              addTrade({
-                timestamp: Date.now(),
-                type: 'sell',
-                tokenMint: token.mint,
-                amount: token.amountUi,
-                wallet: wallet.address,
-                txHash: pfResult.txHash,
-                status: 'success',
-                source: 'treasury',
-              });
-            } else {
-              errors++;
-            }
-          } catch {
-            errors++;
+            if (!pfResult.success) throw new Error(pfResult.error || 'PumpFun sell failed');
+            sold++;
+            addTrade({
+              timestamp: Date.now(),
+              type: 'sell',
+              tokenMint: token.mint,
+              amount: token.amountUi,
+              wallet: wallet.address,
+              txHash: pfResult.txHash,
+              status: 'success',
+              source: 'treasury',
+            });
+          } else {
+            // Graduated or not PumpFun — use Jupiter
+            const quoteUrl = `${JUPITER_API_URL}/quote?` + new URLSearchParams({
+              inputMint: token.mint,
+              outputMint: WSOL_MINT,
+              amount: token.amountRaw,
+              slippageBps: '200',
+            });
+            const quoteResponse = await fetch(quoteUrl, {
+              headers: jupiterApiKey ? { 'x-api-key': jupiterApiKey } : {},
+            });
+            if (!quoteResponse.ok) throw new Error('Jupiter quote failed');
+
+            const quote = await quoteResponse.json();
+            const swapResponse = await fetch(`${JUPITER_API_URL}/swap`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(jupiterApiKey ? { 'x-api-key': jupiterApiKey } : {}),
+              },
+              body: JSON.stringify({
+                quoteResponse: quote,
+                userPublicKey: signer.publicKey.toBase58(),
+                wrapAndUnwrapSol: true,
+                dynamicComputeUnitLimit: true,
+                prioritizationFeeLamports: 'auto',
+              }),
+            });
+            if (!swapResponse.ok) throw new Error('Jupiter swap failed');
+
+            const swapPayload = await swapResponse.json();
+            const transactionBuffer = Buffer.from(swapPayload.swapTransaction, 'base64');
+            const transaction = VersionedTransaction.deserialize(transactionBuffer);
+            transaction.sign([signer]);
+
+            const signature = await connection.sendTransaction(transaction, { skipPreflight: false, maxRetries: 3 });
+            const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+            await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
+            sold++;
+
+            addTrade({
+              timestamp: Date.now(),
+              type: 'sell',
+              tokenMint: token.mint,
+              amount: token.amountUi,
+              wallet: wallet.address,
+              txHash: signature,
+              status: 'success',
+              source: 'treasury',
+            });
           }
+        } catch {
+          errors++;
         }
       }
 
@@ -475,7 +495,7 @@ export function TreasuryWalletManager() {
     }
 
     const jupiterApiKey = localStorage.getItem('jupiter_api_key') || '';
-    if (!jupiterApiKey) {
+    if (!jupiterApiKey && !IS_HOSTED) {
       setError('Jupiter API key missing. Set it in Settings to enable token sells.');
       return;
     }
@@ -521,102 +541,107 @@ export function TreasuryWalletManager() {
     }
 
     const jupiterApiKey = localStorage.getItem('jupiter_api_key') || '';
+    const heliusApiKey = (localStorage.getItem('helius_api_key') || undefined) as string | undefined;
 
     setIsSelling(true);
     setSellLoadingByRow(prev => ({ ...prev, [rowKey]: true }));
     clearFeedback();
 
     try {
-      // Try Jupiter first (works for graduated tokens)
-      const quoteUrl = `${JUPITER_API_URL}/quote?` + new URLSearchParams({
-        inputMint: pendingSell.mint,
-        outputMint: WSOL_MINT,
-        amount: pendingSell.amountRaw,
-        slippageBps: '200',
-      });
+      // Auto-detect DEX: check if token is on PumpFun bonding curve
+      const usePumpFun = await detectUsePumpFun(pendingSell.mint, rpcUrl);
 
-      const quoteResponse = await fetch(quoteUrl, {
-        headers: jupiterApiKey ? { 'x-api-key': jupiterApiKey } : {},
-      });
-
-      if (!quoteResponse.ok) throw new Error('Jupiter quote failed');
-
-      const quote = await quoteResponse.json();
-
-      const swapResponse = await fetch(`${JUPITER_API_URL}/swap`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(jupiterApiKey ? { 'x-api-key': jupiterApiKey } : {}),
-        },
-        body: JSON.stringify({
-          quoteResponse: quote,
-          userPublicKey: signer.publicKey.toBase58(),
-          wrapAndUnwrapSol: true,
-          dynamicComputeUnitLimit: true,
-          prioritizationFeeLamports: 'auto',
-        }),
-      });
-      if (!swapResponse.ok) throw new Error('Jupiter swap failed');
-
-      const swapPayload = await swapResponse.json();
-      const transactionBuffer = Buffer.from(swapPayload.swapTransaction, 'base64');
-      const transaction = VersionedTransaction.deserialize(transactionBuffer);
-      transaction.sign([signer]);
-
-      const connection = new Connection(rpcUrl, 'confirmed');
-      const signature = await connection.sendTransaction(transaction, {
-        skipPreflight: false,
-        maxRetries: 3,
-      });
-      await connection.confirmTransaction(signature, 'confirmed');
-
-      addTrade({
-        timestamp: Date.now(),
-        type: 'sell',
-        tokenMint: pendingSell.mint,
-        amount: pendingSell.amountUi,
-        wallet: pendingSell.walletAddress,
-        txHash: signature,
-        status: 'success',
-        source: 'treasury',
-      });
-
-      showSuccess(`Sell Max successful for ${pendingSell.walletName}`, signature);
-      setPendingSell(null);
-
-      await Promise.all([refreshAllWalletHoldings(), refreshBalances()]);
-    } catch (jupiterErr) {
-      // Jupiter failed — try PumpFun for pre-graduation tokens
-      try {
-        const pfConfig: DexConfig = { rpcUrl, slippageBps: 200, heliusApiKey: (localStorage.getItem('helius_api_key') || undefined) as string | undefined };
+      if (usePumpFun) {
+        // Token still on bonding curve — use PumpFun
+        const pfConfig: DexConfig = { rpcUrl, slippageBps: 200, heliusApiKey };
         const pfQuote = await dexGetQuote('pumpfun', pendingSell.mint, WSOL_MINT, parseInt(pendingSell.amountRaw), pfConfig);
         const pfResult = await dexExecuteSwap(pfQuote, signer, pfConfig);
-        if (pfResult.success) {
-          addTrade({
-            timestamp: Date.now(),
-            type: 'sell',
-            tokenMint: pendingSell.mint,
-            amount: pendingSell.amountUi,
-            wallet: pendingSell.walletAddress,
-            txHash: pfResult.txHash,
-            status: 'success',
-            source: 'treasury',
-          });
+        if (!pfResult.success) throw new Error(pfResult.error || 'PumpFun sell failed');
 
-          showSuccess(`Sell Max successful via PumpFun for ${pendingSell.walletName}`, pfResult.txHash);
-          setPendingSell(null);
+        addTrade({
+          timestamp: Date.now(),
+          type: 'sell',
+          tokenMint: pendingSell.mint,
+          amount: pendingSell.amountUi,
+          wallet: pendingSell.walletAddress,
+          txHash: pfResult.txHash,
+          status: 'success',
+          source: 'treasury',
+        });
 
-          await Promise.all([refreshAllWalletHoldings(), refreshBalances()]);
-        } else {
-          throw new Error(pfResult.error || 'PumpFun sell failed');
+        showSuccess(`Sell Max successful via PumpFun for ${pendingSell.walletName}`, pfResult.txHash);
+      } else {
+        // Graduated or not PumpFun — use Jupiter
+        const quoteUrl = `${JUPITER_API_URL}/quote?` + new URLSearchParams({
+          inputMint: pendingSell.mint,
+          outputMint: WSOL_MINT,
+          amount: pendingSell.amountRaw,
+          slippageBps: '200',
+        });
+
+        const quoteResponse = await fetch(quoteUrl, {
+          headers: jupiterApiKey ? { 'x-api-key': jupiterApiKey } : {},
+        });
+
+        if (!quoteResponse.ok) {
+          const errBody = await quoteResponse.text().catch(() => '');
+          throw new Error(`Jupiter quote failed (${quoteResponse.status})${errBody ? ': ' + errBody.slice(0, 200) : ''}`);
         }
-      } catch (pfErr) {
-        console.error('Sell failed (Jupiter + PumpFun):', jupiterErr, pfErr);
-        const message = pfErr instanceof Error ? pfErr.message : 'Unknown sell error';
-        setError(`Sell failed: ${message}. If balance changed, refresh and retry.`);
-        await refreshAllWalletHoldings();
+
+        const quote = await quoteResponse.json();
+
+        const swapResponse = await fetch(`${JUPITER_API_URL}/swap`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(jupiterApiKey ? { 'x-api-key': jupiterApiKey } : {}),
+          },
+          body: JSON.stringify({
+            quoteResponse: quote,
+            userPublicKey: signer.publicKey.toBase58(),
+            wrapAndUnwrapSol: true,
+            dynamicComputeUnitLimit: true,
+            prioritizationFeeLamports: 'auto',
+          }),
+        });
+        if (!swapResponse.ok) {
+          const errBody = await swapResponse.text().catch(() => '');
+          throw new Error(`Jupiter swap failed (${swapResponse.status})${errBody ? ': ' + errBody.slice(0, 200) : ''}`);
+        }
+
+        const swapPayload = await swapResponse.json();
+        const transactionBuffer = Buffer.from(swapPayload.swapTransaction, 'base64');
+        const transaction = VersionedTransaction.deserialize(transactionBuffer);
+        transaction.sign([signer]);
+
+        const connection = new Connection(rpcUrl, 'confirmed');
+        const signature = await connection.sendTransaction(transaction, {
+          skipPreflight: false,
+          maxRetries: 3,
+        });
+        await connection.confirmTransaction(signature, 'confirmed');
+
+        addTrade({
+          timestamp: Date.now(),
+          type: 'sell',
+          tokenMint: pendingSell.mint,
+          amount: pendingSell.amountUi,
+          wallet: pendingSell.walletAddress,
+          txHash: signature,
+          status: 'success',
+          source: 'treasury',
+        });
+
+        showSuccess(`Sell Max successful for ${pendingSell.walletName}`, signature);
       }
+
+      setPendingSell(null);
+      await Promise.all([refreshAllWalletHoldings(), refreshBalances()]);
+    } catch (err) {
+      console.error('Sell failed:', err);
+      const message = err instanceof Error ? err.message : 'Unknown sell error';
+      setError(`Sell failed: ${message}. If balance changed, refresh and retry.`);
+      await refreshAllWalletHoldings();
     } finally {
       setIsSelling(false);
       setSellLoadingByRow(prev => ({ ...prev, [rowKey]: false }));
@@ -686,91 +711,89 @@ export function TreasuryWalletManager() {
 
       if (holdings.length === 0) continue;
 
-      // Sell each token — try Jupiter first, fall back to PumpFun for pre-graduation tokens
+      // Sell each token — auto-detect PumpFun vs Jupiter
+      const heliusApiKey = (localStorage.getItem('helius_api_key') || undefined) as string | undefined;
       for (const token of holdings) {
         setSellAllProgress(`Selling ${token.mint.slice(0, 6)}... from ${wallet.name || wallet.address.slice(0, 6)}`);
         try {
-          // Try Jupiter first (works for graduated tokens)
-          const quoteUrl = `${JUPITER_API_URL}/quote?` + new URLSearchParams({
-            inputMint: token.mint,
-            outputMint: WSOL_MINT,
-            amount: token.amountRaw,
-            slippageBps: '200',
-          });
+          const usePumpFun = await detectUsePumpFun(token.mint, rpcUrl);
 
-          const quoteResponse = await fetch(quoteUrl, {
-            headers: jupiterApiKey ? { 'x-api-key': jupiterApiKey } : {},
-          });
-          if (!quoteResponse.ok) throw new Error('Jupiter quote failed');
-
-          const quote = await quoteResponse.json();
-
-          const swapResponse = await fetch(`${JUPITER_API_URL}/swap`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(jupiterApiKey ? { 'x-api-key': jupiterApiKey } : {}),
-            },
-            body: JSON.stringify({
-              quoteResponse: quote,
-              userPublicKey: signer.publicKey.toBase58(),
-              wrapAndUnwrapSol: true,
-              dynamicComputeUnitLimit: true,
-              prioritizationFeeLamports: 'auto',
-            }),
-          });
-          if (!swapResponse.ok) throw new Error('Jupiter swap failed');
-
-          const swapPayload = await swapResponse.json();
-          const transactionBuffer = Buffer.from(swapPayload.swapTransaction, 'base64');
-          const transaction = VersionedTransaction.deserialize(transactionBuffer);
-          transaction.sign([signer]);
-
-          const signature = await connection.sendTransaction(transaction, {
-            skipPreflight: false,
-            maxRetries: 3,
-          });
-          await connection.confirmTransaction(signature, 'confirmed');
-
-          totalSold++;
-          // Record sell so PnL position card clears
-          addTrade({
-            timestamp: Date.now(),
-            type: 'sell',
-            tokenMint: token.mint,
-            amount: token.amountUi,
-            wallet: wallet.address,
-            txHash: signature,
-            status: 'success',
-            source: 'treasury',
-          });
-        } catch (jupiterErr) {
-          // Jupiter failed — try PumpFun for pre-graduation tokens
-          try {
+          if (usePumpFun) {
             setSellAllProgress(`Selling ${token.mint.slice(0, 6)}... via PumpFun from ${wallet.name || wallet.address.slice(0, 6)}`);
-            const pfConfig: DexConfig = { rpcUrl, slippageBps: 200, heliusApiKey: (localStorage.getItem('helius_api_key') || undefined) as string | undefined };
+            const pfConfig: DexConfig = { rpcUrl, slippageBps: 200, heliusApiKey };
             const pfQuote = await dexGetQuote('pumpfun', token.mint, WSOL_MINT, parseInt(token.amountRaw), pfConfig);
             const pfResult = await dexExecuteSwap(pfQuote, signer, pfConfig);
-            if (pfResult.success) {
-              totalSold++;
-              // Record sell so PnL position card clears
-              addTrade({
-                timestamp: Date.now(),
-                type: 'sell',
-                tokenMint: token.mint,
-                amount: token.amountUi,
-                wallet: wallet.address,
-                txHash: pfResult.txHash,
-                status: 'success',
-                source: 'treasury',
-              });
-            } else {
-              throw new Error(pfResult.error || 'PumpFun sell failed');
-            }
-          } catch (pfErr) {
-            console.error(`Sell failed for ${token.mint} in ${wallet.address}:`, jupiterErr, pfErr);
-            totalFailed++;
+            if (!pfResult.success) throw new Error(pfResult.error || 'PumpFun sell failed');
+
+            totalSold++;
+            addTrade({
+              timestamp: Date.now(),
+              type: 'sell',
+              tokenMint: token.mint,
+              amount: token.amountUi,
+              wallet: wallet.address,
+              txHash: pfResult.txHash,
+              status: 'success',
+              source: 'treasury',
+            });
+          } else {
+            // Graduated or not PumpFun — use Jupiter
+            const quoteUrl = `${JUPITER_API_URL}/quote?` + new URLSearchParams({
+              inputMint: token.mint,
+              outputMint: WSOL_MINT,
+              amount: token.amountRaw,
+              slippageBps: '200',
+            });
+
+            const quoteResponse = await fetch(quoteUrl, {
+              headers: jupiterApiKey ? { 'x-api-key': jupiterApiKey } : {},
+            });
+            if (!quoteResponse.ok) throw new Error('Jupiter quote failed');
+
+            const quote = await quoteResponse.json();
+
+            const swapResponse = await fetch(`${JUPITER_API_URL}/swap`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(jupiterApiKey ? { 'x-api-key': jupiterApiKey } : {}),
+              },
+              body: JSON.stringify({
+                quoteResponse: quote,
+                userPublicKey: signer.publicKey.toBase58(),
+                wrapAndUnwrapSol: true,
+                dynamicComputeUnitLimit: true,
+                prioritizationFeeLamports: 'auto',
+              }),
+            });
+            if (!swapResponse.ok) throw new Error('Jupiter swap failed');
+
+            const swapPayload = await swapResponse.json();
+            const transactionBuffer = Buffer.from(swapPayload.swapTransaction, 'base64');
+            const transaction = VersionedTransaction.deserialize(transactionBuffer);
+            transaction.sign([signer]);
+
+            const signature = await connection.sendTransaction(transaction, {
+              skipPreflight: false,
+              maxRetries: 3,
+            });
+            await connection.confirmTransaction(signature, 'confirmed');
+
+            totalSold++;
+            addTrade({
+              timestamp: Date.now(),
+              type: 'sell',
+              tokenMint: token.mint,
+              amount: token.amountUi,
+              wallet: wallet.address,
+              txHash: signature,
+              status: 'success',
+              source: 'treasury',
+            });
           }
+        } catch (err) {
+          console.error(`Sell failed for ${token.mint} in ${wallet.address}:`, err);
+          totalFailed++;
         }
       }
     }
