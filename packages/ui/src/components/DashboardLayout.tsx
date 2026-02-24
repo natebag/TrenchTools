@@ -18,7 +18,8 @@ import {
   Fish,
   Rocket,
   ArrowRightLeft,
-  TrendingUp
+  TrendingUp,
+  Bell
 } from 'lucide-react'
 import { WithdrawModal } from './WithdrawModal'
 import { WalletProvider } from '@/context/WalletContext'
@@ -46,11 +47,14 @@ import { WhaleAlerts } from './WhaleAlerts'
 import { LaunchControl } from './LaunchControl'
 import { BridgeControl } from './BridgeControl'
 import { PolymarketControl } from './PolymarketControl'
+import { TokenAlerts } from './TokenAlerts'
+import { TokenAlertsProvider } from '@/context/TokenAlertsContext'
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: Activity, description: 'Overview & quick actions' },
   { path: '/wallets', label: 'Wallets', icon: Wallet, description: 'HD wallet management' },
   { path: '/snipe', label: 'Sniper', icon: Target, description: 'Token sniping control' },
+  { path: '/alerts', label: 'Alerts', icon: Bell, description: 'New token alerts' },
   { path: '/launch', label: 'Launch', icon: Rocket, description: 'Create PumpFun tokens' },
   { path: '/shield', label: 'Shield', icon: Shield, description: 'Security scanner' },
   { path: '/whales', label: 'Whales', icon: Fish, description: 'Whale alerts' },
@@ -480,6 +484,7 @@ function AppContent() {
       case '/': return <Dashboard />
       case '/wallets': return <TreasuryWalletManager />
       case '/snipe': return <SniperControl />
+      case '/alerts': return <TokenAlerts />
       case '/launch': return <LaunchControl />
       case '/bridge': return <BridgeControl />
       case '/polymarket': return <PolymarketControl />
@@ -531,9 +536,11 @@ export function DashboardLayout() {
               <TxHistoryProvider>
                 <PnLProvider>
                   <WhaleProvider>
-                    <ToastProvider>
-                      <AppContent />
-                    </ToastProvider>
+                    <TokenAlertsProvider>
+                      <ToastProvider>
+                        <AppContent />
+                      </ToastProvider>
+                    </TokenAlertsProvider>
                   </WhaleProvider>
                 </PnLProvider>
               </TxHistoryProvider>

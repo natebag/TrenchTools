@@ -169,3 +169,6 @@ export * from './bridge/index.js';
 
 // Polymarket - Prediction market trading on Polygon
 export * from './polymarket/index.js';
+
+// Token Alerts - PumpFun new token stream
+export * from './token-alerts/index.js';
