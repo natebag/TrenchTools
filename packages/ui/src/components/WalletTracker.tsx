@@ -1,8 +1,9 @@
 /**
  * WalletTracker — track any Solana wallet's holdings, trades, and stats.
+ * Copy-trade: auto-execute trades when tracked wallets buy/sell.
  *
  * Replaces the old WhaleAlerts component with richer wallet monitoring.
- * Three-panel layout: wallet list, detail view (holdings/trades/stats), activity feed.
+ * Three-panel layout: wallet list, detail view (holdings/trades/stats/copy), activity feed.
  */
 
 import { useState, useCallback } from 'react';
@@ -22,12 +23,23 @@ import {
   Wallet,
   Copy,
   Zap,
+  CheckCircle,
+  XCircle,
+  Clock,
 } from 'lucide-react';
 import { useWalletTracker } from '@/context/WalletTrackerContext';
 import { useSecureWallet } from '@/hooks/useSecureWallet';
 import { useNetwork } from '@/context/NetworkContext';
 import { useToast } from './Toast';
-import type { WalletHolding, WalletTrade, TraderStats, WalletTradeAlert } from '@trenchtools/core';
+import type {
+  WalletHolding,
+  WalletTrade,
+  TraderStats,
+  WalletTradeAlert,
+  CopyTradeConfig,
+  CopyTradeExecution,
+} from '@trenchtools/core';
+import { DEFAULT_COPY_TRADE_CONFIG } from '@trenchtools/core';
 
 // ── Helpers ──
 
@@ -89,7 +101,7 @@ function useQuickBuy() {
 
 // ── Tab Type ──
 
-type DetailTab = 'holdings' | 'trades' | 'stats';
+type DetailTab = 'holdings' | 'trades' | 'stats' | 'copy';
 type MainView = 'detail' | 'activity' | 'settings';
 
 // ── Main Component ──
@@ -105,6 +117,8 @@ export function WalletTracker() {
     isPolling,
     isLoading,
     settings,
+    copyConfigs,
+    copyHistory,
     addWallet,
     removeWallet,
     selectWallet,
@@ -112,6 +126,8 @@ export function WalletTracker() {
     updateSettings,
     clearAlerts,
     dismissAlert,
+    updateCopyConfig,
+    clearCopyHistory,
   } = useWalletTracker();
 
   const [detailTab, setDetailTab] = useState<DetailTab>('holdings');
@@ -121,6 +137,9 @@ export function WalletTracker() {
   const [showAddForm, setShowAddForm] = useState(false);
 
   const selectedWallet = trackedWallets.find(w => w.id === selectedWalletId);
+
+  // Count active copy-trades
+  const activeCopyCount = trackedWallets.filter(w => copyConfigs[w.address]?.enabled).length;
 
   const handleAdd = () => {
     if (!newAddress.trim()) return;
@@ -143,6 +162,12 @@ export function WalletTracker() {
             <p className="text-sm text-slate-400">
               {trackedWallets.length} wallet{trackedWallets.length !== 1 ? 's' : ''} tracked
               {isPolling && <span className="ml-2 text-emerald-400">Polling</span>}
+              {activeCopyCount > 0 && (
+                <span className="ml-2 text-amber-400">
+                  <Zap className="w-3 h-3 inline mr-0.5" />
+                  {activeCopyCount} copying
+                </span>
+              )}
             </p>
           </div>
         </div>
@@ -217,42 +242,52 @@ export function WalletTracker() {
                   Add one to get started!
                 </p>
               ) : (
-                trackedWallets.map(w => (
-                  <div
-                    key={w.id}
-                    onClick={() => { selectWallet(w.id); setMainView('detail'); }}
-                    className={`flex items-center gap-2 p-2.5 rounded-lg cursor-pointer transition-colors group ${
-                      selectedWalletId === w.id
-                        ? 'bg-blue-500/20 border border-blue-500/30'
-                        : 'hover:bg-slate-800/70'
-                    }`}
-                  >
-                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                      selectedWalletId === w.id ? 'bg-blue-400' : 'bg-slate-600'
-                    }`} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-200 truncate">{w.label}</p>
-                      <p className="text-xs text-slate-500 font-mono">{truncAddr(w.address)}</p>
+                trackedWallets.map(w => {
+                  const isCopyEnabled = copyConfigs[w.address]?.enabled;
+                  return (
+                    <div
+                      key={w.id}
+                      onClick={() => { selectWallet(w.id); setMainView('detail'); }}
+                      className={`flex items-center gap-2 p-2.5 rounded-lg cursor-pointer transition-colors group ${
+                        selectedWalletId === w.id
+                          ? 'bg-blue-500/20 border border-blue-500/30'
+                          : 'hover:bg-slate-800/70'
+                      }`}
+                    >
+                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                        selectedWalletId === w.id ? 'bg-blue-400' : 'bg-slate-600'
+                      }`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-medium text-slate-200 truncate">{w.label}</p>
+                          {isCopyEnabled && (
+                            <span className="text-[10px] font-bold px-1 py-0.5 rounded bg-amber-500/20 text-amber-400 flex-shrink-0">
+                              COPY
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-500 font-mono">{truncAddr(w.address)}</p>
+                      </div>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <a
+                          href={`https://solscan.io/account/${w.address}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="p-1 hover:bg-slate-700 rounded"
+                        >
+                          <ExternalLink className="w-3 h-3 text-slate-400" />
+                        </a>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); removeWallet(w.id); }}
+                          className="p-1 hover:bg-red-500/20 rounded"
+                        >
+                          <Trash2 className="w-3 h-3 text-slate-400 hover:text-red-400" />
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <a
-                        href={`https://solscan.io/account/${w.address}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="p-1 hover:bg-slate-700 rounded"
-                      >
-                        <ExternalLink className="w-3 h-3 text-slate-400" />
-                      </a>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); removeWallet(w.id); }}
-                        className="p-1 hover:bg-red-500/20 rounded"
-                      >
-                        <Trash2 className="w-3 h-3 text-slate-400 hover:text-red-400" />
-                      </button>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -270,7 +305,14 @@ export function WalletTracker() {
               <div className="bg-slate-900 rounded-xl border border-slate-800 p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-lg font-semibold text-white">{selectedWallet.label}</h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-semibold text-white">{selectedWallet.label}</h3>
+                      {copyConfigs[selectedWallet.address]?.enabled && (
+                        <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">
+                          COPY ACTIVE
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 mt-1">
                       <code className="text-sm text-slate-400 font-mono">{truncAddr(selectedWallet.address)}</code>
                       <button
@@ -306,13 +348,16 @@ export function WalletTracker() {
                   { key: 'holdings' as DetailTab, label: 'Holdings', icon: Wallet, count: holdings.length },
                   { key: 'trades' as DetailTab, label: 'Trades', icon: Activity, count: trades.length },
                   { key: 'stats' as DetailTab, label: 'Stats', icon: BarChart3 },
+                  { key: 'copy' as DetailTab, label: 'Copy Trade', icon: Zap },
                 ]).map(tab => (
                   <button
                     key={tab.key}
                     onClick={() => setDetailTab(tab.key)}
                     className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition-colors ${
                       detailTab === tab.key
-                        ? 'bg-slate-800 text-white'
+                        ? tab.key === 'copy' && copyConfigs[selectedWallet.address]?.enabled
+                          ? 'bg-amber-500/20 text-amber-400'
+                          : 'bg-slate-800 text-white'
                         : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
@@ -326,7 +371,7 @@ export function WalletTracker() {
               </div>
 
               {/* Tab content */}
-              {isLoading ? (
+              {isLoading && detailTab !== 'copy' ? (
                 <div className="flex items-center justify-center py-16">
                   <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
                   <span className="ml-2 text-slate-400">Loading...</span>
@@ -336,6 +381,15 @@ export function WalletTracker() {
                   {detailTab === 'holdings' && <HoldingsTab holdings={holdings} />}
                   {detailTab === 'trades' && <TradesTab trades={trades} />}
                   {detailTab === 'stats' && <StatsTab stats={stats} />}
+                  {detailTab === 'copy' && selectedWallet && (
+                    <CopyTradeTab
+                      config={copyConfigs[selectedWallet.address] || DEFAULT_COPY_TRADE_CONFIG}
+                      history={copyHistory.filter(e => e.trackedWalletAddress === selectedWallet.address)}
+                      allHistory={copyHistory}
+                      updateConfig={(partial) => updateCopyConfig(selectedWallet.address, partial)}
+                      clearHistory={clearCopyHistory}
+                    />
+                  )}
                 </>
               )}
             </div>
@@ -347,6 +401,251 @@ export function WalletTracker() {
                 Choose a tracked wallet from the list to view their holdings, trades, and stats.
               </p>
             </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Copy Trade Tab ──
+
+function CopyTradeTab({
+  config,
+  history,
+  allHistory,
+  updateConfig,
+  clearHistory,
+}: {
+  config: CopyTradeConfig;
+  history: CopyTradeExecution[];
+  allHistory: CopyTradeExecution[];
+  updateConfig: (partial: Partial<CopyTradeConfig>) => void;
+  clearHistory: () => void;
+}) {
+  return (
+    <div className="space-y-4">
+      {/* Enable/Disable Toggle */}
+      <div className="bg-slate-900 rounded-xl border border-slate-800 p-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+              config.enabled ? 'bg-amber-500/20' : 'bg-slate-800'
+            }`}>
+              <Zap className={`w-5 h-5 ${config.enabled ? 'text-amber-400' : 'text-slate-500'}`} />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-white">Copy Trading</h3>
+              <p className="text-xs text-slate-400">
+                {config.enabled ? 'Auto-copying trades from this wallet' : 'Enable to auto-copy trades'}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => updateConfig({ enabled: !config.enabled })}
+            className={`relative w-12 h-6 rounded-full transition-colors ${
+              config.enabled ? 'bg-amber-500' : 'bg-slate-700'
+            }`}
+          >
+            <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+              config.enabled ? 'translate-x-6' : 'translate-x-0.5'
+            }`} />
+          </button>
+        </div>
+
+        {config.enabled && (
+          <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+            <p className="text-xs text-amber-300">
+              When this wallet buys or sells, the same trade will be auto-executed with your wallet at {config.amountSol} SOL per buy.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Settings */}
+      <div className="bg-slate-900 rounded-xl border border-slate-800 p-5 space-y-5">
+        <h4 className="text-sm font-semibold text-slate-300">Copy Settings</h4>
+
+        {/* SOL Amount */}
+        <div>
+          <label className="block text-xs text-slate-400 mb-2">Buy Amount (SOL)</label>
+          <div className="flex gap-2 flex-wrap">
+            {[0.01, 0.05, 0.1, 0.25, 0.5].map(amt => (
+              <button
+                key={amt}
+                onClick={() => updateConfig({ amountSol: amt })}
+                className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                  config.amountSol === amt
+                    ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                    : 'bg-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                {amt} SOL
+              </button>
+            ))}
+            <input
+              type="number"
+              value={config.amountSol}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                if (val > 0 && val <= 10) updateConfig({ amountSol: val });
+              }}
+              step="0.01"
+              min="0.001"
+              max="10"
+              className="w-20 px-2 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white text-center focus:outline-none focus:border-amber-500"
+            />
+          </div>
+        </div>
+
+        {/* Copy Buys / Sells */}
+        <div className="flex gap-6">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={config.copyBuys}
+              onChange={(e) => updateConfig({ copyBuys: e.target.checked })}
+              className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-amber-500 focus:ring-amber-500"
+            />
+            <span className="text-sm text-slate-300">Copy Buys</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={config.copySells}
+              onChange={(e) => updateConfig({ copySells: e.target.checked })}
+              className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-amber-500 focus:ring-amber-500"
+            />
+            <span className="text-sm text-slate-300">Copy Sells</span>
+          </label>
+        </div>
+
+        {/* Slippage */}
+        <div>
+          <label className="block text-xs text-slate-400 mb-2">Slippage (bps)</label>
+          <div className="flex gap-2">
+            {[300, 500, 1000, 1500].map(bps => (
+              <button
+                key={bps}
+                onClick={() => updateConfig({ slippageBps: bps })}
+                className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                  config.slippageBps === bps
+                    ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                    : 'bg-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                {bps / 100}%
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Rate Limit */}
+        <div>
+          <label className="block text-xs text-slate-400 mb-2">Max Copies / Minute</label>
+          <div className="flex gap-2">
+            {[1, 3, 5, 10].map(n => (
+              <button
+                key={n}
+                onClick={() => updateConfig({ maxCopiesPerMinute: n })}
+                className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                  config.maxCopiesPerMinute === n
+                    ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                    : 'bg-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Execution History */}
+      <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4 text-amber-400" />
+            <h4 className="text-sm font-semibold text-slate-300">Copy History</h4>
+            {history.length > 0 && (
+              <span className="text-xs bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">
+                {history.length}
+              </span>
+            )}
+          </div>
+          {allHistory.length > 0 && (
+            <button
+              onClick={clearHistory}
+              className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+
+        <div className="max-h-[400px] overflow-y-auto divide-y divide-slate-800/50">
+          {history.length === 0 ? (
+            <div className="p-8 text-center">
+              <Zap className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+              <p className="text-sm text-slate-500">
+                No copy-trade executions yet.
+                {!config.enabled && ' Enable copy trading to start.'}
+              </p>
+            </div>
+          ) : (
+            history.map(exec => (
+              <div key={exec.id} className="p-3 hover:bg-slate-800/30 transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                    exec.status === 'success' ? 'bg-emerald-500/20'
+                      : exec.status === 'failed' ? 'bg-red-500/20'
+                      : 'bg-yellow-500/20'
+                  }`}>
+                    {exec.status === 'success' ? (
+                      <CheckCircle className="w-4 h-4 text-emerald-400" />
+                    ) : exec.status === 'failed' ? (
+                      <XCircle className="w-4 h-4 text-red-400" />
+                    ) : (
+                      <Clock className="w-4 h-4 text-yellow-400 animate-pulse" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${
+                        exec.type === 'buy' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+                      }`}>
+                        {exec.type.toUpperCase()}
+                      </span>
+                      <span className="text-sm font-medium text-slate-200">{exec.tokenSymbol}</span>
+                      <span className="text-xs text-slate-500">{exec.amountSol} SOL</span>
+                    </div>
+                    {exec.error && (
+                      <p className="text-xs text-red-400 mt-0.5 truncate">{exec.error}</p>
+                    )}
+                    {exec.copySignature && (
+                      <a
+                        href={`https://solscan.io/tx/${exec.copySignature}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-blue-400 hover:text-blue-300 mt-0.5 inline-block"
+                      >
+                        Tx: {exec.copySignature.slice(0, 12)}...
+                      </a>
+                    )}
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-xs text-slate-500">{timeAgo(exec.timestamp)}</p>
+                    <span className={`text-[10px] font-bold px-1 py-0.5 rounded ${
+                      exec.status === 'success' ? 'bg-emerald-500/20 text-emerald-400'
+                        : exec.status === 'failed' ? 'bg-red-500/20 text-red-400'
+                        : 'bg-yellow-500/20 text-yellow-400'
+                    }`}>
+                      {exec.status.toUpperCase()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))
           )}
         </div>
       </div>

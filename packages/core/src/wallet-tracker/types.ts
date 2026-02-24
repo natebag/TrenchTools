@@ -52,3 +52,38 @@ export interface WalletTradeAlert {
   trade: WalletTrade;
   timestamp: number;
 }
+
+// ── Copy Trading ──
+
+export interface CopyTradeConfig {
+  enabled: boolean;
+  amountSol: number;
+  copyBuys: boolean;
+  copySells: boolean;
+  slippageBps: number;
+  maxCopiesPerMinute: number;
+}
+
+export interface CopyTradeExecution {
+  id: string;
+  trackedWalletAddress: string;
+  trackedWalletLabel: string;
+  originalSignature: string;
+  copySignature?: string;
+  tokenMint: string;
+  tokenSymbol: string;
+  type: 'buy' | 'sell';
+  amountSol: number;
+  status: 'pending' | 'success' | 'failed';
+  error?: string;
+  timestamp: number;
+}
+
+export const DEFAULT_COPY_TRADE_CONFIG: CopyTradeConfig = {
+  enabled: false,
+  amountSol: 0.1,
+  copyBuys: true,
+  copySells: false,
+  slippageBps: 500,
+  maxCopiesPerMinute: 3,
+};
