@@ -35,6 +35,7 @@ import { useTxHistory } from '@/context/TxHistoryContext';
 import { usePnL } from '@/context/PnLContext';
 import { useSecureWallet } from '@/hooks/useSecureWallet';
 import { useNetwork } from '@/context/NetworkContext';
+import { SafetyBadge } from '@/components/SafetyBadge';
 import {
   getQuote,
   executeSwap as dexExecuteSwap,
@@ -763,6 +764,11 @@ export function SniperControl() {
             disabled={isSniping}
             className="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-3 text-white font-mono text-sm focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
           />
+          {localConfig.targetToken && (
+            <div className="mt-2">
+              <SafetyBadge tokenMint={localConfig.targetToken} compact={false} />
+            </div>
+          )}
         </div>
 
         {/* Amount & Slippage */}

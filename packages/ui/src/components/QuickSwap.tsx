@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useSecureWallet } from '@/hooks/useSecureWallet';
 import { useNetwork } from '@/context/NetworkContext';
+import { SafetyBadge } from '@/components/SafetyBadge';
 import { Connection, VersionedTransaction } from '@solana/web3.js';
 
 const JUPITER_API_URL = 'https://api.jup.ag/swap/v1';
@@ -173,6 +174,11 @@ export function QuickSwap() {
             placeholder="Enter token mint address..."
             className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm placeholder-slate-500"
           />
+          {tokenMint && (
+            <div className="mt-1.5">
+              <SafetyBadge tokenMint={tokenMint} compact={false} />
+            </div>
+          )}
         </div>
 
         {/* Amount */}

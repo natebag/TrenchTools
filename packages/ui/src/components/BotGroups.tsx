@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import { useSecureWallet } from '@/hooks/useSecureWallet'
 import { useNetwork } from '@/context/NetworkContext'
+import { SafetyBadge } from '@/components/SafetyBadge'
 import { isStealthEnabled, isStealthAvailable } from '@/lib/changenow'
 import { useStealthFund } from '@/hooks/useStealthFund'
 import { useActiveTokens } from '@/context/ActiveTokensContext'
@@ -1671,6 +1672,11 @@ export function BotGroups() {
                   className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg font-mono text-xs"
                   placeholder="Token mint address..."
                 />
+                {newToken && (
+                  <div className="mt-1.5">
+                    <SafetyBadge tokenMint={newToken} compact={false} />
+                  </div>
+                )}
               </div>
 
               <div>

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { useSecureWallet } from '@/hooks/useSecureWallet'
 import { useNetwork } from '@/context/NetworkContext'
+import { SafetyBadge } from '@/components/SafetyBadge'
 import { useActiveTokens } from '@/context/ActiveTokensContext'
 import { useTxHistory } from '@/context/TxHistoryContext'
 import { 
@@ -1068,8 +1069,13 @@ export function VolumeControl() {
               placeholder="Enter token mint address..."
               className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500"
             />
+            {config.targetToken && (
+              <div className="mt-1.5">
+                <SafetyBadge tokenMint={config.targetToken} compact={false} />
+              </div>
+            )}
           </div>
-          
+
           {/* Daily Target */}
           <div className="space-y-2">
             <label className="text-sm text-slate-400">Daily Volume Target (SOL)</label>

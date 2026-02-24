@@ -43,7 +43,10 @@ export type RiskFlags =
   | 'HONEYPOT_DETECTED'
   | 'RUGGED'
   | 'RENOUNCED'
-  | 'VERIFIED_SAFE';
+  | 'VERIFIED_SAFE'
+  | 'TOP_10_CONCENTRATED'
+  | 'SINGLE_HOLDER_RISK'
+  | 'LOW_LIQ_MCAP_RATIO';
 
 // ============ Check Result ============
 
@@ -94,6 +97,22 @@ export interface TokenSafetyScore {
   findings: RiskFinding[];
   analyzedAt: number;
   warnings: string[];
+  holderAnalysis?: TopHolderAnalysis;
+  pumpFunStatus?: PumpFunStatus;
+}
+
+/** Top holder concentration analysis */
+export interface TopHolderAnalysis {
+  topHolders: { address: string; amount: number; percentage: number }[];
+  top10Concentration: number;
+  isConcentrated: boolean;
+}
+
+/** PumpFun bonding curve status */
+export interface PumpFunStatus {
+  isPumpFun: boolean;
+  isGraduated: boolean;
+  progress?: number;
 }
 
 /** Comprehensive risk assessment */

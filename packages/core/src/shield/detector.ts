@@ -23,6 +23,8 @@ import type {
   AuthorityCheck,
   LiquidityCheck,
   TransferFeeAnalysis,
+  TopHolderAnalysis,
+  PumpFunStatus,
 } from './types.js';
 import {
   HONEYPOT_THRESHOLD,
@@ -266,6 +268,11 @@ function checkLiquidityRisk(liquidity: LiquidityCheck): ShieldCheck {
     flags.push('LOW_LIQUIDITY');
   }
 
+  if (liquidity.liquidityRatio > 0 && liquidity.liquidityRatio < 0.05) {
+    riskScore += 10;
+    flags.push('LOW_LIQ_MCAP_RATIO');
+  }
+
   return {
     pass: riskScore < 20,
     score: riskScore,
@@ -331,23 +338,93 @@ function checkTransferPatterns(
   };
 }
 
-function checkTopHolders(pairs: DexScreenerPair[] | null): ShieldCheck {
-  const flags: RiskFlags[] = [];
-  let riskScore = 0;
+async function checkTopHolders(
+  connection: Connection,
+  mintAddress: string,
+): Promise<ShieldCheck & { holderAnalysis?: TopHolderAnalysis }> {
+  try {
+    const mint = new PublicKey(mintAddress);
 
-  if (!pairs || pairs.length === 0) {
+    const [largestAccounts, mintInfo] = await Promise.all([
+      connection.getTokenLargestAccounts(mint),
+      connection.getParsedAccountInfo(mint, 'confirmed'),
+    ]);
+
+    // Get total supply from parsed mint info
+    let totalSupply = 0;
+    if (mintInfo.value?.data && 'parsed' in mintInfo.value.data) {
+      const info = mintInfo.value.data.parsed.info;
+      const decimals = info.decimals as number;
+      totalSupply = parseFloat(info.supply as string) / Math.pow(10, decimals);
+    }
+
+    if (totalSupply === 0 || !largestAccounts.value.length) {
+      return { pass: true, score: 0, flags: [] };
+    }
+
+    const holders = largestAccounts.value.map(a => ({
+      address: a.address.toBase58(),
+      amount: parseFloat(a.uiAmountString || '0'),
+      percentage: totalSupply > 0
+        ? (parseFloat(a.uiAmountString || '0') / totalSupply) * 100
+        : 0,
+    }));
+
+    const top10 = holders.slice(0, 10);
+    const top10Concentration = top10.reduce((sum, h) => sum + h.percentage, 0);
+    const maxSingle = Math.max(...holders.map(h => h.percentage), 0);
+
+    const flags: RiskFlags[] = [];
+    let riskScore = 0;
+
+    if (top10Concentration > 50) {
+      flags.push('TOP_10_CONCENTRATED');
+      riskScore += 15;
+    }
+    if (maxSingle > 20) {
+      flags.push('SINGLE_HOLDER_RISK');
+      riskScore += 10;
+    }
+
+    return {
+      pass: riskScore < 15,
+      score: riskScore,
+      flags,
+      holderAnalysis: {
+        topHolders: holders,
+        top10Concentration,
+        isConcentrated: top10Concentration > 50,
+      },
+    };
+  } catch (error) {
+    console.warn('Top holder check failed:', error);
     return { pass: true, score: 0, flags: [] };
   }
+}
 
-  // DexScreener doesn't provide holder info directly
-  // This would need to be fetched from another source (Helius, QuickNode, etc.)
-  // For now, return neutral
+const PUMPFUN_PROGRAM_ID = new PublicKey('6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P');
 
-  return {
-    pass: true,
-    score: riskScore,
-    flags,
-  };
+async function checkPumpFunStatus(
+  connection: Connection,
+  mintAddress: string,
+): Promise<PumpFunStatus> {
+  try {
+    const mint = new PublicKey(mintAddress);
+    const [bondingCurve] = PublicKey.findProgramAddressSync(
+      [Buffer.from('bonding-curve'), mint.toBytes()],
+      PUMPFUN_PROGRAM_ID,
+    );
+    const accountInfo = await connection.getAccountInfo(bondingCurve);
+    if (!accountInfo?.data) return { isPumpFun: false, isGraduated: false };
+
+    const complete = accountInfo.data.readUInt8(48) === 1;
+    const realSolReserves = Number(accountInfo.data.readBigUInt64LE(32)) / 1e9;
+    const progress = Math.min(100, (realSolReserves / 85) * 100);
+
+    return { isPumpFun: true, isGraduated: complete, progress };
+  } catch {
+    return { isPumpFun: false, isGraduated: false };
+  }
 }
 
 // ============ Main Analysis ============
@@ -373,19 +450,20 @@ export async function analyzeTokenSafety(
   }
 
   // Fetch data in parallel
-  const [authorities, dexData] = await Promise.all([
+  const [authorities, dexData, holderCheck, pumpFunStatus] = await Promise.all([
     checkAuthorities(connection, tokenMint),
     fetchDexScreenerData(tokenMint),
+    checkTopHolders(connection, tokenMint),
+    checkPumpFunStatus(connection, tokenMint),
   ]);
 
   const liquidity = analyzeLiquidity(dexData);
-  
+
   // Run all checks
   const mintCheck = checkMintAuthority(authorities);
   const freezeCheck = checkFreezeAuthority(authorities);
   const liquidityCheck = checkLiquidityRisk(liquidity);
   const transferCheck = checkTransferPatterns(dexData);
-  const holderCheck = checkTopHolders(dexData);
 
   // Calculate total score
   const totalRiskScore = 
@@ -444,8 +522,14 @@ export async function analyzeTokenSafety(
         break;
       case 'TOP_HOLDER_RISK':
       case 'DEV_HOLDINGS_HIGH':
+      case 'TOP_10_CONCENTRATED':
+      case 'SINGLE_HOLDER_RISK':
         severity = 'medium';
         category = 'ownership';
+        break;
+      case 'LOW_LIQ_MCAP_RATIO':
+        severity = 'medium';
+        category = 'liquidity';
         break;
       case 'RENOUNCED':
       case 'VERIFIED_SAFE':
@@ -471,7 +555,7 @@ export async function analyzeTokenSafety(
     mintAuthority: mintCheck.pass ? 100 : 0,
     freezeAuthority: freezeCheck.pass ? 100 : 0,
     liquidity: liquidityCheck.pass ? 100 : Math.max(0, 100 - liquidityCheck.score * 2),
-    ownership: holderCheck.pass ? 100 : 50,
+    ownership: holderCheck.pass ? 100 : Math.max(0, 100 - holderCheck.score * 3),
     transfers: transferCheck.pass ? 100 : Math.max(0, 100 - transferCheck.score * 2),
     developer: 75, // Neutral without deeper analysis
   };
@@ -491,6 +575,8 @@ export async function analyzeTokenSafety(
     findings,
     analyzedAt: Date.now(),
     warnings: isHoneypot ? ['🚨 POTENTIAL HONEYPOT DETECTED'] : [],
+    holderAnalysis: holderCheck.holderAnalysis,
+    pumpFunStatus: pumpFunStatus.isPumpFun ? pumpFunStatus : undefined,
   };
 
   // Cache result
@@ -516,6 +602,9 @@ function getDescriptionForFlag(flag: RiskFlags): string {
     'RUGGED': 'Token has been rugged - avoid',
     'RENOUNCED': 'Contract ownership has been renounced - cannot be modified',
     'VERIFIED_SAFE': 'Token passed safety checks',
+    'TOP_10_CONCENTRATED': 'Top 10 holders own over 50% of supply - dump risk',
+    'SINGLE_HOLDER_RISK': 'Single wallet holds over 20% of supply',
+    'LOW_LIQ_MCAP_RATIO': 'Liquidity is less than 5% of market cap - exit liquidity risk',
   };
   return descriptions[flag] || `Risk flag: ${flag}`;
 }
@@ -588,7 +677,22 @@ export function formatSafetyReport(score: TokenSafetyScore): string {
   report += `  Mint Authority: ${score.scores.mintAuthority === 100 ? '✅' : '⚠️'} ${score.scores.mintAuthority}/100\n`;
   report += `  Freeze Authority: ${score.scores.freezeAuthority === 100 ? '✅' : '⚠️'} ${score.scores.freezeAuthority}/100\n`;
   report += `  Liquidity: ${score.scores.liquidity >= 70 ? '✅' : '⚠️'} ${score.scores.liquidity}/100\n`;
+  report += `  Ownership: ${score.scores.ownership >= 70 ? '✅' : '⚠️'} ${score.scores.ownership}/100\n`;
   report += `  Transfers: ${score.scores.transfers >= 70 ? '✅' : '⚠️'} ${score.scores.transfers}/100\n`;
+
+  if (score.pumpFunStatus?.isPumpFun) {
+    const pfs = score.pumpFunStatus;
+    report += pfs.isGraduated
+      ? `  🎓 PumpFun: Graduated (trading on DEX)\n`
+      : `  🧪 PumpFun: Bonding Curve (${pfs.progress?.toFixed(0) || '?'}% to graduation)\n`;
+  }
+
+  if (score.holderAnalysis) {
+    const conc = score.holderAnalysis.top10Concentration.toFixed(1);
+    const icon = score.holderAnalysis.isConcentrated ? '⚠️' : '✅';
+    report += `  ${icon} Top 10 holders: ${conc}%\n`;
+  }
+
   report += `\n`;
 
   if (score.findings.length > 0) {
