@@ -15,7 +15,6 @@ import {
   ArrowDown,
   ArrowUp,
   Plus,
-  Fish,
   Rocket,
   ArrowRightLeft,
   TrendingUp,
@@ -29,7 +28,7 @@ import { ChainSelector } from './ChainSelector'
 import { ActiveTokensProvider } from '@/context/ActiveTokensContext'
 import { TxHistoryProvider } from '@/context/TxHistoryContext'
 import { PnLProvider } from '@/context/PnLContext'
-import { WhaleProvider } from '@/context/WhaleContext'
+import { WalletTrackerProvider } from '@/context/WalletTrackerContext'
 import { ToastProvider } from './Toast'
 import { ErrorBoundary } from './ErrorBoundary'
 import { Dashboard } from './Dashboard'
@@ -43,7 +42,7 @@ import { SettingsPanel } from './SettingsPanel'
 import { DetectionDashboard } from './DetectionDashboard'
 import { MarketMaking } from './MarketMaking'
 import { TokenChart } from './TokenChart'
-import { WhaleAlerts } from './WhaleAlerts'
+import { WalletTracker } from './WalletTracker'
 import { LaunchControl } from './LaunchControl'
 import { BridgeControl } from './BridgeControl'
 import { PolymarketControl } from './PolymarketControl'
@@ -57,7 +56,7 @@ const navItems = [
   { path: '/alerts', label: 'Alerts', icon: Bell, description: 'New token alerts' },
   { path: '/launch', label: 'Launch', icon: Rocket, description: 'Create PumpFun tokens' },
   { path: '/shield', label: 'Shield', icon: Shield, description: 'Security scanner' },
-  { path: '/whales', label: 'Whales', icon: Fish, description: 'Whale alerts' },
+  { path: '/tracker', label: 'Tracker', icon: Eye, description: 'Wallet tracker' },
   { path: '/pnl', label: 'P&L', icon: LineChart, description: 'Portfolio analytics' },
   { path: '/bridge', label: 'Bridge', icon: ArrowRightLeft, description: 'Cross-chain bridging' },
   { path: '/polymarket', label: 'Polymarket', icon: TrendingUp, description: 'Prediction markets' },
@@ -489,7 +488,7 @@ function AppContent() {
       case '/bridge': return <BridgeControl />
       case '/polymarket': return <PolymarketControl />
       case '/shield': return <ShieldScanner />
-      case '/whales': return <WhaleAlerts />
+      case '/tracker': return <WalletTracker />
       case '/pnl': return <PnLCharts />
       case '/activity': return null // Always-mounted below
       case '/detection': return <DetectionDashboard />
@@ -535,13 +534,13 @@ export function DashboardLayout() {
             <ActiveTokensProvider>
               <TxHistoryProvider>
                 <PnLProvider>
-                  <WhaleProvider>
+                  <WalletTrackerProvider>
                     <TokenAlertsProvider>
                       <ToastProvider>
                         <AppContent />
                       </ToastProvider>
                     </TokenAlertsProvider>
-                  </WhaleProvider>
+                  </WalletTrackerProvider>
                 </PnLProvider>
               </TxHistoryProvider>
             </ActiveTokensProvider>

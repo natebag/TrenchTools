@@ -29,6 +29,7 @@ import * as polymarketBuy from './polymarket-buy.js';
 import * as polymarketSell from './polymarket-sell.js';
 import * as polymarketPositions from './polymarket-positions.js';
 import * as tokenAlerts from './token-alerts.js';
+import * as walletTracker from './wallet-tracker.js';
 
 export function registerAllTools(server: McpServer, config: MCPConfig): void {
   const register = (tool: { toolName: string; toolDescription: string; toolSchema: { shape: Record<string, unknown> }; handler: (args: any, config: MCPConfig) => Promise<any> }) => {
@@ -65,4 +66,5 @@ export function registerAllTools(server: McpServer, config: MCPConfig): void {
   register(polymarketSell);
   register(polymarketPositions);
   register(tokenAlerts);
+  register(walletTracker);
 }

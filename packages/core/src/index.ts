@@ -172,3 +172,6 @@ export * from './polymarket/index.js';
 
 // Token Alerts - PumpFun new token stream
 export * from './token-alerts/index.js';
+
+// Wallet Tracker - holdings, trades, stats
+export * from './wallet-tracker/index.js';
