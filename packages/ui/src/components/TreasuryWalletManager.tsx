@@ -32,11 +32,14 @@ import {
 } from 'lucide-react';
 import { useSecureWallet } from '@/hooks/useSecureWallet';
 import { useNetwork } from '@/context/NetworkContext';
+import { useChain } from '@/context/ChainContext';
 import { isStealthEnabled, isStealthAvailable } from '@/lib/changenow';
 import { useStealthFund, type StealthDestination } from '@/hooks/useStealthFund';
 import { useTxHistory } from '@/context/TxHistoryContext';
 import { getQuote as dexGetQuote, executeSwap as dexExecuteSwap, type DexConfig } from '@/lib/dex';
 import { isLaunchWallet, getLaunchesForWallet } from '@/lib/launchWalletGuard';
+import { getWalletManager } from '@/lib/browserWallet';
+import { isEvmChain } from '@trenchtools/core';
 import { Connection, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL, ParsedTransactionWithMeta, VersionedTransaction } from '@solana/web3.js';
 
 // Transaction history types
@@ -92,13 +95,21 @@ interface PendingPrivateKeyExportState {
 }
 
 const CACHE_TTL = 60000; // 1 minute cache
-const RENT_RESERVE = 0.005; // SOL to leave for rent exemption
+const SOLANA_RENT_RESERVE = 0.005; // SOL to leave for rent exemption
 const SPL_TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 const WSOL_MINT = 'So11111111111111111111111111111111111111112';
 const JUPITER_API_URL = 'https://api.jup.ag/swap/v1';
 
+/** Get viem chain definition from our chain ID */
+async function getViemChain(chainId: string) {
+  const chains = await import('viem/chains');
+  if (chainId === 'bsc') return chains.bsc;
+  if (chainId === 'polygon') return chains.polygon;
+  return chains.base;
+}
+
 export function TreasuryWalletManager() {
-  const { rpcUrl, network } = useNetwork();
+  const { rpcUrl } = useNetwork();
   const {
     wallets,
     isLocked,
@@ -118,6 +129,9 @@ export function TreasuryWalletManager() {
   } = useSecureWallet({ rpcUrl });
   const { addTrade } = useTxHistory();
   const { state: stealthState, fundStealth, cancelAll: cancelStealth } = useStealthFund(rpcUrl);
+  const { chain, nativeToken, chainConfig, explorerUrl: chainExplorerUrl } = useChain();
+  const isSolana = chain === 'solana';
+  const RENT_RESERVE = isSolana ? SOLANA_RENT_RESERVE : 0;
 
   // UI State
   const [error, setError] = useState<string | null>(null);
@@ -168,10 +182,12 @@ export function TreasuryWalletManager() {
 
   const walletAddressKey = wallets.map(w => w.address).join('|');
 
-  // Main wallet is always the first one
-  const treasuryWallet = wallets[0];
-  const subWallets = wallets.filter(w => w.id !== treasuryWallet?.id && w.type !== 'burner');
-  const botWallets = wallets.filter(w => w.type === 'burner');
+  // Filter wallets by current chain
+  const chainWallets = wallets.filter(w => (w.chain || 'solana') === chain);
+  const otherChainWallets = wallets.filter(w => (w.chain || 'solana') !== chain);
+  const treasuryWallet = chainWallets.find(w => w.type === 'treasury') || chainWallets[0];
+  const subWallets = chainWallets.filter(w => w !== treasuryWallet && w.type !== 'burner');
+  const botWallets = chainWallets.filter(w => w.type === 'burner');
 
   const showSuccess = useCallback((message: string, txHash?: string) => {
     setSuccess(message);
@@ -186,6 +202,11 @@ export function TreasuryWalletManager() {
 
   // ── Bot Wallet: Sell all tokens ──────────────────────────────
   const handleBotWalletSell = useCallback(async (wallet: (typeof wallets)[number]) => {
+    if (!isSolana) {
+      setError(`Token sells not yet supported on ${chainConfig.name}`);
+      return;
+    }
+
     const keypairs = getKeypairs();
     const signer = keypairs.find(kp => kp.publicKey.toBase58() === wallet.address);
     if (!signer) {
@@ -310,13 +331,18 @@ export function TreasuryWalletManager() {
     }
   }, [getKeypairs, rpcUrl, clearFeedback, showSuccess, addTrade]);
 
-  // ── Bot Wallet: Sweep SOL to treasury ────────────────────────
+  // ── Bot Wallet: Sweep native token to treasury ────────────────────────
   const handleBotWalletSweep = useCallback(async (wallet: (typeof wallets)[number]) => {
-    const treasuryAddr = wallets[0]?.address;
-    if (!treasuryAddr) {
+    if (!treasuryWallet) {
       setError('No treasury wallet');
       return;
     }
+
+    if (!isSolana) {
+      setError(`Bot wallet sweep not yet supported on ${chainConfig.name}`);
+      return;
+    }
+
     const keypairs = getKeypairs();
     const signer = keypairs.find(kp => kp.publicKey.toBase58() === wallet.address);
     if (!signer) {
@@ -333,7 +359,7 @@ export function TreasuryWalletManager() {
       const sweepLamports = lamports - 5000;
 
       if (sweepLamports <= 0) {
-        showSuccess(`${wallet.name}: No SOL to sweep`);
+        showSuccess(`${wallet.name}: No ${nativeToken} to sweep`);
         return;
       }
 
@@ -341,7 +367,7 @@ export function TreasuryWalletManager() {
       const tx = new Transaction().add(
         SystemProgram.transfer({
           fromPubkey: signer.publicKey,
-          toPubkey: new PublicKey(treasuryAddr),
+          toPubkey: new PublicKey(treasuryWallet.address),
           lamports: sweepLamports,
         })
       );
@@ -350,13 +376,13 @@ export function TreasuryWalletManager() {
       tx.sign(signer);
       const sig = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false, maxRetries: 3 });
       await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
-      showSuccess(`${wallet.name}: Swept ${(sweepLamports / LAMPORTS_PER_SOL).toFixed(4)} SOL to treasury`, sig);
+      showSuccess(`${wallet.name}: Swept ${(sweepLamports / LAMPORTS_PER_SOL).toFixed(4)} ${nativeToken} to treasury`, sig);
     } catch (err) {
       setError(`${wallet.name} sweep failed: ${(err as Error).message}`);
     } finally {
       setBotWalletBusy(prev => { const next = { ...prev }; delete next[wallet.id]; return next; });
     }
-  }, [wallets, getKeypairs, rpcUrl, clearFeedback, showSuccess]);
+  }, [treasuryWallet, isSolana, chainConfig, getKeypairs, rpcUrl, clearFeedback, showSuccess, nativeToken]);
 
   const getWalletSigner = useCallback((walletAddress: string) => {
     const keypairs = getKeypairs();
@@ -364,6 +390,12 @@ export function TreasuryWalletManager() {
   }, [getKeypairs]);
 
   const fetchWalletHoldings = useCallback(async (wallet: (typeof wallets)[number]) => {
+    // Token holdings only supported on Solana
+    if (!isSolana) {
+      setWalletHoldings(prev => ({ ...prev, [wallet.id]: [] }));
+      return;
+    }
+
     setWalletHoldingsLoading(prev => ({ ...prev, [wallet.id]: true }));
 
     try {
@@ -404,7 +436,7 @@ export function TreasuryWalletManager() {
     } finally {
       setWalletHoldingsLoading(prev => ({ ...prev, [wallet.id]: false }));
     }
-  }, [rpcUrl]);
+  }, [rpcUrl, isSolana]);
 
   const refreshAllWalletHoldings = useCallback(async () => {
     if (isLocked || wallets.length === 0) {
@@ -437,6 +469,11 @@ export function TreasuryWalletManager() {
     wallet: (typeof wallets)[number],
     token: WalletTokenHolding
   ) => {
+    if (!isSolana) {
+      setError(`Token sells not yet supported on ${chainConfig.name}`);
+      return;
+    }
+
     const jupiterApiKey = localStorage.getItem('jupiter_api_key') || '';
     if (!jupiterApiKey) {
       setError('Jupiter API key missing. Set it in Settings to enable token sells.');
@@ -595,8 +632,13 @@ export function TreasuryWalletManager() {
     addTrade,
   ]);
 
-  // Sell all tokens from selected wallets back to SOL
+  // Sell all tokens from selected wallets back to native token
   const handleSellAllTokens = useCallback(async () => {
+    if (!isSolana) {
+      setError(`Token sells not yet supported on ${chainConfig.name}`);
+      return;
+    }
+
     const targetIds = selectedWalletIds.length > 0 ? selectedWalletIds : subWallets.map(w => w.id);
     const targetWallets = wallets.filter(w => targetIds.includes(w.id));
     if (targetWallets.length === 0) return;
@@ -734,7 +776,7 @@ export function TreasuryWalletManager() {
     }
 
     setSellAllProgress('');
-    showSuccess(`Sold ${totalSold} token${totalSold !== 1 ? 's' : ''} to SOL${totalFailed > 0 ? ` (${totalFailed} failed)` : ''}`);
+    showSuccess(`Sold ${totalSold} token${totalSold !== 1 ? 's' : ''} to ${nativeToken}${totalFailed > 0 ? ` (${totalFailed} failed)` : ''}`);
     setIsSellingAll(false);
     await Promise.all([refreshAllWalletHoldings(), refreshBalances()]);
   }, [selectedWalletIds, subWallets, wallets, rpcUrl, getWalletSigner, clearFeedback, showSuccess, refreshAllWalletHoldings, refreshBalances, addTrade]);
@@ -807,7 +849,7 @@ export function TreasuryWalletManager() {
                           {formatTokenAmount(token.amountUi)}
                         </span>
                         <a
-                          href={`https://solscan.io/token/${token.mint}${network === 'devnet' ? '?cluster=devnet' : ''}`}
+                          href={chainExplorerUrl('token', token.mint)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-xs text-blue-400 hover:underline flex items-center gap-1"
@@ -849,13 +891,19 @@ export function TreasuryWalletManager() {
     isSelling,
     sellLoadingByRow,
     formatTokenAmount,
-    network,
+    chainExplorerUrl,
     handleOpenSellConfirm,
     showSuccess,
   ]);
 
   // Fetch transaction history for a wallet
   const fetchTransactionHistory = useCallback(async (address: string, forceRefresh = false) => {
+    // Transaction history only supported on Solana
+    if (!isSolana) {
+      setHistoryTransactions([]);
+      return;
+    }
+
     // Check cache first
     const cached = txHistoryCache.current[address];
     if (!forceRefresh && cached && Date.now() - cached.fetchedAt < CACHE_TTL) {
@@ -910,7 +958,7 @@ export function TreasuryWalletManager() {
     } finally {
       setHistoryLoading(false);
     }
-  }, [rpcUrl]);
+  }, [rpcUrl, isSolana]);
 
   // Analyze a parsed transaction to extract type, amount, counterparty
   const analyzeTransaction = (
@@ -983,7 +1031,7 @@ export function TreasuryWalletManager() {
     }
     try {
       // Create treasury wallet first
-      await generateWallet('Treasury', 'treasury', password);
+      await generateWallet('Treasury', 'treasury', password, chain);
       setShowCreateVaultModal(false);
       setPassword('');
       setConfirmPassword('');
@@ -1021,11 +1069,11 @@ export function TreasuryWalletManager() {
         await importWallet(new Uint8Array(keyArray), newWalletName, newWalletType, password);
         showSuccess('Sub-wallet imported!');
       } else if (count === 1) {
-        await generateWallet(newWalletName, newWalletType, password);
+        await generateWallet(newWalletName, newWalletType, password, chain);
         showSuccess('Sub-wallet added!');
       } else {
         // Bulk generate with suffix: "Name-1", "Name-2", etc.
-        await generateWallets(count, `${newWalletName}-`, newWalletType, password);
+        await generateWallets(count, `${newWalletName}-`, newWalletType, password, chain);
         showSuccess(`Generated ${count} wallets!`);
       }
       setShowAddWalletModal(false);
@@ -1101,62 +1149,97 @@ export function TreasuryWalletManager() {
         throw new Error('Treasury keypair not found. Is vault unlocked?');
       }
 
-      // Stealth funding via ChangeNow (if enabled and available)
-      if (isStealthEnabled() && isStealthAvailable()) {
-        const destinations: StealthDestination[] = [{
-          address: targetWallet.address,
-          label: targetWallet.name,
-          amountSol,
-        }];
-        await fundStealth(treasuryKeypair, destinations, () => {
-          showSuccess(`Stealth funded ${amountSol} SOL to ${targetWallet.name}!`);
-          setTimeout(() => {
-            Promise.all([refreshBalances(), refreshAllWalletHoldings()]);
-          }, 2000);
-          setTimeout(() => {
-            setShowFundModal(false);
-            setFundTarget(null);
-            setFundAmount('0.01');
-          }, 3000);
+      if (isEvmChain(chain)) {
+        // EVM fund path
+        const manager = getWalletManager();
+        const rawData = manager.getRawWalletData(treasuryWallet.id);
+        if (!rawData) throw new Error('Treasury wallet data not found');
+        const { evmAccountFromSecret } = await import('@trenchtools/core');
+        const { privateKeyHex } = evmAccountFromSecret(new Uint8Array(rawData.secretKey));
+        const { createWalletClient, http, parseEther } = await import('viem');
+        const { privateKeyToAccount } = await import('viem/accounts');
+        const viemChain = await getViemChain(chain);
+        const viemAccount = privateKeyToAccount(privateKeyHex as `0x${string}`);
+        const evmRpc = localStorage.getItem(`trench_rpc_${chain}`) || chainConfig.defaultRpcUrl;
+        const client = createWalletClient({ account: viemAccount, chain: viemChain, transport: http(evmRpc) });
+        const txHash = await client.sendTransaction({
+          to: targetWallet.address as `0x${string}`,
+          value: parseEther(amountSol.toString()),
         });
+        setFundTxHash(txHash);
+        showSuccess(`Funded ${amountSol} ${nativeToken} to ${targetWallet.name}!`);
+        setTimeout(() => {
+          Promise.all([refreshBalances(), refreshAllWalletHoldings()]);
+        }, 2000);
+        setTimeout(() => {
+          setShowFundModal(false);
+          setFundTarget(null);
+          setFundAmount('0.01');
+          setFundTxHash(null);
+        }, 3000);
+      } else if (chain === 'sui') {
+        setError('SUI fund not yet supported from UI -- use bot or MCP');
         return;
+      } else {
+        // Solana fund path
+
+        // Stealth funding via ChangeNow (if enabled and available)
+        if (isStealthEnabled() && isStealthAvailable()) {
+          const destinations: StealthDestination[] = [{
+            address: targetWallet.address,
+            label: targetWallet.name,
+            amountSol,
+          }];
+          await fundStealth(treasuryKeypair, destinations, () => {
+            showSuccess(`Stealth funded ${amountSol} ${nativeToken} to ${targetWallet.name}!`);
+            setTimeout(() => {
+              Promise.all([refreshBalances(), refreshAllWalletHoldings()]);
+            }, 2000);
+            setTimeout(() => {
+              setShowFundModal(false);
+              setFundTarget(null);
+              setFundAmount('0.01');
+            }, 3000);
+          });
+          return;
+        }
+
+        const connection = new Connection(rpcUrl, 'confirmed');
+
+        // Create transfer instruction
+        const transaction = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: treasuryKeypair.publicKey,
+            toPubkey: new PublicKey(targetWallet.address),
+            lamports: Math.floor(amountSol * LAMPORTS_PER_SOL),
+          })
+        );
+
+        // Get recent blockhash
+        const { blockhash } = await connection.getLatestBlockhash();
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = treasuryKeypair.publicKey;
+
+        // Sign and send
+        transaction.sign(treasuryKeypair);
+        const signature = await connection.sendRawTransaction(transaction.serialize());
+
+        setFundTxHash(signature);
+        showSuccess(`Funded ${amountSol} ${nativeToken} to ${targetWallet.name}!`);
+
+        // Refresh balances after a short delay
+        setTimeout(() => {
+          Promise.all([refreshBalances(), refreshAllWalletHoldings()]);
+        }, 2000);
+
+        // Close modal after success
+        setTimeout(() => {
+          setShowFundModal(false);
+          setFundTarget(null);
+          setFundAmount('0.01');
+          setFundTxHash(null);
+        }, 3000);
       }
-
-      const connection = new Connection(rpcUrl, 'confirmed');
-
-      // Create transfer instruction
-      const transaction = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: treasuryKeypair.publicKey,
-          toPubkey: new PublicKey(targetWallet.address),
-          lamports: Math.floor(amountSol * LAMPORTS_PER_SOL),
-        })
-      );
-
-      // Get recent blockhash
-      const { blockhash } = await connection.getLatestBlockhash();
-      transaction.recentBlockhash = blockhash;
-      transaction.feePayer = treasuryKeypair.publicKey;
-
-      // Sign and send
-      transaction.sign(treasuryKeypair);
-      const signature = await connection.sendRawTransaction(transaction.serialize());
-
-      setFundTxHash(signature);
-      showSuccess(`Funded ${amountSol} SOL to ${targetWallet.name}!`);
-
-      // Refresh balances after a short delay
-      setTimeout(() => {
-        Promise.all([refreshBalances(), refreshAllWalletHoldings()]);
-      }, 2000);
-
-      // Close modal after success
-      setTimeout(() => {
-        setShowFundModal(false);
-        setFundTarget(null);
-        setFundAmount('0.01');
-        setFundTxHash(null);
-      }, 3000);
 
     } catch (err) {
       setError((err as Error).message);
@@ -1178,7 +1261,7 @@ export function TreasuryWalletManager() {
 
     const amountPerWallet = parseFloat(bulkFundAmount) || 0;
     if (amountPerWallet < 0.001) {
-      setError('Fund amount per wallet too small (min 0.001 SOL)');
+      setError(`Fund amount per wallet too small (min 0.001 ${nativeToken})`);
       return;
     }
 
@@ -1187,7 +1270,7 @@ export function TreasuryWalletManager() {
     const availableToDistribute = treasuryBalance - RENT_RESERVE;
 
     if (totalNeeded > availableToDistribute) {
-      setError(`Need ${totalNeeded.toFixed(4)} SOL but treasury only has ${availableToDistribute.toFixed(4)} available`);
+      setError(`Need ${totalNeeded.toFixed(4)} ${nativeToken} but treasury only has ${availableToDistribute.toFixed(4)} available`);
       return;
     }
 
@@ -1202,46 +1285,80 @@ export function TreasuryWalletManager() {
         throw new Error('Treasury keypair not found. Is vault unlocked?');
       }
 
-      // Stealth funding via ChangeNow (if enabled and available)
-      if (isStealthEnabled() && isStealthAvailable()) {
-        const destinations: StealthDestination[] = targetWallets.map(w => ({
-          address: w.address,
-          label: w.name,
-          amountSol: amountPerWallet,
-        }));
-        await fundStealth(treasuryKeypair, destinations, () => {
-          showSuccess(`Stealth funded ${targetWallets.length} wallets with ${amountPerWallet.toFixed(4)} SOL each!`);
-          setTimeout(() => {
-            Promise.all([refreshBalances(), refreshAllWalletHoldings()]);
-          }, 2000);
-        });
+      if (isEvmChain(chain)) {
+        // EVM bulk fund path — send one tx per wallet
+        const manager = getWalletManager();
+        const rawData = manager.getRawWalletData(treasuryWallet.id);
+        if (!rawData) throw new Error('Treasury wallet data not found');
+        const { evmAccountFromSecret } = await import('@trenchtools/core');
+        const { privateKeyHex } = evmAccountFromSecret(new Uint8Array(rawData.secretKey));
+        const { createWalletClient, http, parseEther } = await import('viem');
+        const { privateKeyToAccount } = await import('viem/accounts');
+        const viemChain = await getViemChain(chain);
+        const viemAccount = privateKeyToAccount(privateKeyHex as `0x${string}`);
+        const evmRpc = localStorage.getItem(`trench_rpc_${chain}`) || chainConfig.defaultRpcUrl;
+        const client = createWalletClient({ account: viemAccount, chain: viemChain, transport: http(evmRpc) });
+
+        let funded = 0;
+        for (const wallet of targetWallets) {
+          try {
+            await client.sendTransaction({
+              to: wallet.address as `0x${string}`,
+              value: parseEther(amountPerWallet.toString()),
+            });
+            funded++;
+          } catch (e) {
+            console.error(`Failed to fund ${wallet.name}:`, e);
+          }
+        }
+        showSuccess(`Funded ${funded}/${targetWallets.length} wallets with ${amountPerWallet.toFixed(4)} ${nativeToken} each!`);
+      } else if (chain === 'sui') {
+        setError('SUI bulk fund not yet supported from UI -- use bot or MCP');
         return;
+      } else {
+        // Solana bulk fund path
+
+        // Stealth funding via ChangeNow (if enabled and available)
+        if (isStealthEnabled() && isStealthAvailable()) {
+          const destinations: StealthDestination[] = targetWallets.map(w => ({
+            address: w.address,
+            label: w.name,
+            amountSol: amountPerWallet,
+          }));
+          await fundStealth(treasuryKeypair, destinations, () => {
+            showSuccess(`Stealth funded ${targetWallets.length} wallets with ${amountPerWallet.toFixed(4)} ${nativeToken} each!`);
+            setTimeout(() => {
+              Promise.all([refreshBalances(), refreshAllWalletHoldings()]);
+            }, 2000);
+          });
+          return;
+        }
+
+        const connection = new Connection(rpcUrl, 'confirmed');
+        const { blockhash } = await connection.getLatestBlockhash();
+
+        // Create a transaction with transfers to selected sub-wallets
+        const transaction = new Transaction();
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = treasuryKeypair.publicKey;
+
+        for (const wallet of targetWallets) {
+          transaction.add(
+            SystemProgram.transfer({
+              fromPubkey: treasuryKeypair.publicKey,
+              toPubkey: new PublicKey(wallet.address),
+              lamports: Math.floor(amountPerWallet * LAMPORTS_PER_SOL),
+            })
+          );
+        }
+
+        transaction.sign(treasuryKeypair);
+        const signature = await connection.sendRawTransaction(transaction.serialize());
+
+        await connection.confirmTransaction(signature, 'confirmed');
+
+        showSuccess(`Funded ${targetWallets.length} wallets with ${amountPerWallet.toFixed(4)} ${nativeToken} each!`);
       }
-
-      const connection = new Connection(rpcUrl, 'confirmed');
-      const { blockhash } = await connection.getLatestBlockhash();
-
-      // Create a transaction with transfers to selected sub-wallets
-      const transaction = new Transaction();
-      transaction.recentBlockhash = blockhash;
-      transaction.feePayer = treasuryKeypair.publicKey;
-
-      for (const wallet of targetWallets) {
-        transaction.add(
-          SystemProgram.transfer({
-            fromPubkey: treasuryKeypair.publicKey,
-            toPubkey: new PublicKey(wallet.address),
-            lamports: Math.floor(amountPerWallet * LAMPORTS_PER_SOL),
-          })
-        );
-      }
-
-      transaction.sign(treasuryKeypair);
-      const signature = await connection.sendRawTransaction(transaction.serialize());
-
-      await connection.confirmTransaction(signature, 'confirmed');
-
-      showSuccess(`Funded ${targetWallets.length} wallets with ${amountPerWallet.toFixed(4)} SOL each!`);
 
       setTimeout(() => {
         Promise.all([refreshBalances(), refreshAllWalletHoldings()]);
@@ -1277,51 +1394,87 @@ export function TreasuryWalletManager() {
     setError(null);
 
     try {
-      const keypairs = getKeypairs();
-      const connection = new Connection(rpcUrl, 'confirmed');
-      
       let successCount = 0;
       let totalSwept = 0;
 
-      // Process each wallet individually (each needs its own signer)
-      for (const wallet of sweepableWallets) {
-        const walletKeypair = keypairs.find(kp => kp.publicKey.toBase58() === wallet.address);
-        
-        if (!walletKeypair) {
-          console.warn(`Keypair not found for ${wallet.name}`);
-          continue;
+      if (isEvmChain(chain)) {
+        // EVM bulk sweep path
+        const manager = getWalletManager();
+        const { evmAccountFromSecret } = await import('@trenchtools/core');
+        const { createWalletClient, createPublicClient, http, formatEther } = await import('viem');
+        const { privateKeyToAccount } = await import('viem/accounts');
+        const viemChain = await getViemChain(chain);
+        const evmRpc = localStorage.getItem(`trench_rpc_${chain}`) || chainConfig.defaultRpcUrl;
+
+        for (const wallet of sweepableWallets) {
+          const rawData = manager.getRawWalletData(wallet.id);
+          if (!rawData) { console.warn(`Raw data not found for ${wallet.name}`); continue; }
+          const { privateKeyHex } = evmAccountFromSecret(new Uint8Array(rawData.secretKey));
+          const viemAccount = privateKeyToAccount(privateKeyHex as `0x${string}`);
+          const publicClient = createPublicClient({ chain: viemChain, transport: http(evmRpc) });
+          const walletClient = createWalletClient({ account: viemAccount, chain: viemChain, transport: http(evmRpc) });
+          try {
+            const balance = await publicClient.getBalance({ address: wallet.address as `0x${string}` });
+            const gasEstimate = 21000n * 30000000000n; // 21k gas * 30 gwei rough estimate
+            const sweepValue = balance - gasEstimate;
+            if (sweepValue <= 0n) continue;
+            await walletClient.sendTransaction({
+              to: treasuryWallet.address as `0x${string}`,
+              value: sweepValue,
+            });
+            totalSwept += parseFloat(formatEther(sweepValue));
+            successCount++;
+          } catch (walletErr) {
+            console.error(`Failed to sweep ${wallet.name}:`, walletErr);
+          }
         }
+      } else if (chain === 'sui') {
+        setError(`Sweep not yet supported on ${chainConfig.name} -- transfer manually`);
+        return;
+      } else {
+        // Solana bulk sweep path
+        const keypairs = getKeypairs();
+        const connection = new Connection(rpcUrl, 'confirmed');
 
-        const sweepAmount = (wallet.balance || 0) - RENT_RESERVE;
-        if (sweepAmount <= 0) continue;
+        for (const wallet of sweepableWallets) {
+          const walletKeypair = keypairs.find(kp => kp.publicKey.toBase58() === wallet.address);
 
-        try {
-          const { blockhash } = await connection.getLatestBlockhash();
-          
-          const transaction = new Transaction().add(
-            SystemProgram.transfer({
-              fromPubkey: walletKeypair.publicKey,
-              toPubkey: new PublicKey(treasuryWallet.address),
-              lamports: Math.floor(sweepAmount * LAMPORTS_PER_SOL),
-            })
-          );
-          
-          transaction.recentBlockhash = blockhash;
-          transaction.feePayer = walletKeypair.publicKey;
-          transaction.sign(walletKeypair);
-          
-          const signature = await connection.sendRawTransaction(transaction.serialize());
-          await connection.confirmTransaction(signature, 'confirmed');
-          
-          successCount++;
-          totalSwept += sweepAmount;
-        } catch (walletErr) {
-          console.error(`Failed to sweep ${wallet.name}:`, walletErr);
+          if (!walletKeypair) {
+            console.warn(`Keypair not found for ${wallet.name}`);
+            continue;
+          }
+
+          const sweepAmount = (wallet.balance || 0) - RENT_RESERVE;
+          if (sweepAmount <= 0) continue;
+
+          try {
+            const { blockhash } = await connection.getLatestBlockhash();
+
+            const transaction = new Transaction().add(
+              SystemProgram.transfer({
+                fromPubkey: walletKeypair.publicKey,
+                toPubkey: new PublicKey(treasuryWallet.address),
+                lamports: Math.floor(sweepAmount * LAMPORTS_PER_SOL),
+              })
+            );
+
+            transaction.recentBlockhash = blockhash;
+            transaction.feePayer = walletKeypair.publicKey;
+            transaction.sign(walletKeypair);
+
+            const signature = await connection.sendRawTransaction(transaction.serialize());
+            await connection.confirmTransaction(signature, 'confirmed');
+
+            successCount++;
+            totalSwept += sweepAmount;
+          } catch (walletErr) {
+            console.error(`Failed to sweep ${wallet.name}:`, walletErr);
+          }
         }
       }
 
       if (successCount > 0) {
-        showSuccess(`Swept ${totalSwept.toFixed(4)} SOL from ${successCount} wallets to Treasury!`);
+        showSuccess(`Swept ${totalSwept.toFixed(4)} ${nativeToken} from ${successCount} wallets to Treasury!`);
         setTimeout(() => {
           Promise.all([refreshBalances(), refreshAllWalletHoldings()]);
         }, 1000);
@@ -1354,44 +1507,79 @@ export function TreasuryWalletManager() {
     setError(null);
 
     try {
-      const keypairs = getKeypairs();
-      const walletKeypair = keypairs.find(kp => kp.publicKey.toBase58() === wallet.address);
-      
-      if (!walletKeypair) {
-        throw new Error('Wallet keypair not found. Is vault unlocked?');
+      if (isEvmChain(chain)) {
+        // EVM single sweep
+        const manager = getWalletManager();
+        const rawData = manager.getRawWalletData(wallet.id);
+        if (!rawData) throw new Error('Wallet data not found');
+        const { evmAccountFromSecret } = await import('@trenchtools/core');
+        const { privateKeyHex } = evmAccountFromSecret(new Uint8Array(rawData.secretKey));
+        const { createWalletClient, createPublicClient, http, formatEther } = await import('viem');
+        const { privateKeyToAccount } = await import('viem/accounts');
+        const viemChain = await getViemChain(chain);
+        const viemAccount = privateKeyToAccount(privateKeyHex as `0x${string}`);
+        const evmRpc = localStorage.getItem(`trench_rpc_${chain}`) || chainConfig.defaultRpcUrl;
+        const publicClient = createPublicClient({ chain: viemChain, transport: http(evmRpc) });
+        const walletClient = createWalletClient({ account: viemAccount, chain: viemChain, transport: http(evmRpc) });
+        const balance = await publicClient.getBalance({ address: wallet.address as `0x${string}` });
+        const gasEstimate = 21000n * 30000000000n;
+        const sweepValue = balance - gasEstimate;
+        if (sweepValue <= 0n) {
+          setError(`No ${nativeToken} to sweep after gas`);
+          return;
+        }
+        const txHash = await walletClient.sendTransaction({
+          to: treasuryWallet.address as `0x${string}`,
+          value: sweepValue,
+        });
+        showSuccess(`Swept ${parseFloat(formatEther(sweepValue)).toFixed(4)} ${nativeToken} from ${wallet.name} to Treasury!`, txHash);
+        setTimeout(() => {
+          Promise.all([refreshBalances(), refreshAllWalletHoldings()]);
+        }, 1000);
+      } else if (chain === 'sui') {
+        setError(`Sweep not yet supported on ${chainConfig.name} -- transfer manually`);
+        return;
+      } else {
+        // Solana single sweep
+        const keypairs = getKeypairs();
+        const walletKeypair = keypairs.find(kp => kp.publicKey.toBase58() === wallet.address);
+
+        if (!walletKeypair) {
+          throw new Error('Wallet keypair not found. Is vault unlocked?');
+        }
+
+        const connection = new Connection(rpcUrl, 'confirmed');
+        const { blockhash } = await connection.getLatestBlockhash();
+
+        const transaction = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: walletKeypair.publicKey,
+            toPubkey: new PublicKey(treasuryWallet.address),
+            lamports: Math.floor(sweepAmount * LAMPORTS_PER_SOL),
+          })
+        );
+
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = walletKeypair.publicKey;
+        transaction.sign(walletKeypair);
+
+        const signature = await connection.sendRawTransaction(transaction.serialize());
+        await connection.confirmTransaction(signature, 'confirmed');
+
+        showSuccess(`Swept ${sweepAmount.toFixed(4)} ${nativeToken} from ${wallet.name} to Treasury!`);
+        setTimeout(() => {
+          Promise.all([refreshBalances(), refreshAllWalletHoldings()]);
+        }, 1000);
       }
-
-      const connection = new Connection(rpcUrl, 'confirmed');
-      const { blockhash } = await connection.getLatestBlockhash();
-
-      const transaction = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: walletKeypair.publicKey,
-          toPubkey: new PublicKey(treasuryWallet.address),
-          lamports: Math.floor(sweepAmount * LAMPORTS_PER_SOL),
-        })
-      );
-      
-      transaction.recentBlockhash = blockhash;
-      transaction.feePayer = walletKeypair.publicKey;
-      transaction.sign(walletKeypair);
-      
-      const signature = await connection.sendRawTransaction(transaction.serialize());
-      await connection.confirmTransaction(signature, 'confirmed');
-
-      showSuccess(`Swept ${sweepAmount.toFixed(4)} SOL from ${wallet.name} to Treasury!`);
-      setTimeout(() => {
-        Promise.all([refreshBalances(), refreshAllWalletHoldings()]);
-      }, 1000);
 
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setSweepingWalletId(null);
     }
-  }, [wallets, treasuryWallet, getKeypairs, rpcUrl, refreshBalances, refreshAllWalletHoldings, showSuccess]);
+  }, [wallets, treasuryWallet, getKeypairs, rpcUrl, refreshBalances, refreshAllWalletHoldings, showSuccess, chain, chainConfig, nativeToken]);
 
-  // Delete wallet — sweep remaining SOL to treasury first, then remove from vault
+  // Delete wallet — sweep remaining balance to treasury first, then remove from vault
   const handleDeleteWallet = useCallback(async (walletId: string) => {
     const wallet = wallets.find(w => w.id === walletId);
     if (!wallet) {
@@ -1418,43 +1606,71 @@ export function TreasuryWalletManager() {
       // If this wallet has any balance and treasury exists, sweep first
       const balance = wallet.balance || 0;
       if (balance > 0.000005 && treasuryWallet && wallet.id !== treasuryWallet.id) {
-        const keypairs = getKeypairs();
-        const walletKeypair = keypairs.find(kp => kp.publicKey.toBase58() === wallet.address);
+        if (isEvmChain(chain)) {
+          // EVM sweep before delete
+          const manager = getWalletManager();
+          const rawData = manager.getRawWalletData(wallet.id);
+          if (rawData) {
+            const { evmAccountFromSecret } = await import('@trenchtools/core');
+            const { privateKeyHex } = evmAccountFromSecret(new Uint8Array(rawData.secretKey));
+            const { createWalletClient, createPublicClient, http } = await import('viem');
+            const { privateKeyToAccount } = await import('viem/accounts');
+            const viemChain = await getViemChain(chain);
+            const viemAccount = privateKeyToAccount(privateKeyHex as `0x${string}`);
+            const evmRpc = localStorage.getItem(`trench_rpc_${chain}`) || chainConfig.defaultRpcUrl;
+            const publicClient = createPublicClient({ chain: viemChain, transport: http(evmRpc) });
+            const walletClient = createWalletClient({ account: viemAccount, chain: viemChain, transport: http(evmRpc) });
+            const evmBalance = await publicClient.getBalance({ address: wallet.address as `0x${string}` });
+            const gasEstimate = 21000n * 30000000000n;
+            const sweepValue = evmBalance - gasEstimate;
+            if (sweepValue > 0n) {
+              await walletClient.sendTransaction({
+                to: treasuryWallet.address as `0x${string}`,
+                value: sweepValue,
+              });
+            }
+          }
+        } else if (isSolana) {
+          // Solana sweep before delete
+          const keypairs = getKeypairs();
+          const walletKeypair = keypairs.find(kp => kp.publicKey.toBase58() === wallet.address);
 
-        if (walletKeypair) {
-          const connection = new Connection(rpcUrl, 'confirmed');
-          // Get fresh balance from chain (UI balance may be stale)
-          const lamports = await connection.getBalance(walletKeypair.publicKey);
-          // Reserve 5000 lamports for the transfer fee
-          const sweepLamports = lamports - 5000;
+          if (walletKeypair) {
+            const connection = new Connection(rpcUrl, 'confirmed');
+            // Get fresh balance from chain (UI balance may be stale)
+            const lamports = await connection.getBalance(walletKeypair.publicKey);
+            // Reserve 5000 lamports for the transfer fee
+            const sweepLamports = lamports - 5000;
 
-          if (sweepLamports > 0) {
-            const { blockhash } = await connection.getLatestBlockhash();
-            const transaction = new Transaction().add(
-              SystemProgram.transfer({
-                fromPubkey: walletKeypair.publicKey,
-                toPubkey: new PublicKey(treasuryWallet.address),
-                lamports: sweepLamports,
-              })
-            );
-            transaction.recentBlockhash = blockhash;
-            transaction.feePayer = walletKeypair.publicKey;
-            transaction.sign(walletKeypair);
+            if (sweepLamports > 0) {
+              const { blockhash } = await connection.getLatestBlockhash();
+              const transaction = new Transaction().add(
+                SystemProgram.transfer({
+                  fromPubkey: walletKeypair.publicKey,
+                  toPubkey: new PublicKey(treasuryWallet.address),
+                  lamports: sweepLamports,
+                })
+              );
+              transaction.recentBlockhash = blockhash;
+              transaction.feePayer = walletKeypair.publicKey;
+              transaction.sign(walletKeypair);
 
-            const signature = await connection.sendRawTransaction(transaction.serialize());
-            await connection.confirmTransaction(signature, 'confirmed');
+              const signature = await connection.sendRawTransaction(transaction.serialize());
+              await connection.confirmTransaction(signature, 'confirmed');
+            }
           }
         }
+        // SUI: skip sweep, just delete
       }
 
       // Now remove the wallet from the vault
       await removeWallet(walletId, password);
-      showSuccess(`Deleted ${wallet.name}${balance > 0.000005 ? ` (swept ${balance.toFixed(4)} SOL to Treasury)` : ''}`);
+      showSuccess(`Deleted ${wallet.name}${balance > 0.000005 ? ` (swept ${balance.toFixed(4)} ${nativeToken} to Treasury)` : ''}`);
       refreshBalances();
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [wallets, treasuryWallet, getKeypairs, rpcUrl, password, removeWallet, refreshBalances, showSuccess]);
+  }, [wallets, treasuryWallet, getKeypairs, rpcUrl, password, removeWallet, refreshBalances, showSuccess, chain, chainConfig, isSolana, nativeToken]);
 
   useEffect(() => {
     if (isLocked) {
@@ -1594,7 +1810,7 @@ export function TreasuryWalletManager() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-white">Wallet Vault</h2>
-          <p className="text-slate-400">{network === 'mainnet' ? '🔴 Mainnet' : '🟢 Devnet'} • {wallets.length} wallets</p>
+          <p className="text-slate-400">{chainConfig.name} • {chainWallets.length} wallets{otherChainWallets.length > 0 ? ` (${otherChainWallets.length} on other chains)` : ''}</p>
         </div>
         <div className="flex gap-2">
           <button
@@ -1641,15 +1857,33 @@ export function TreasuryWalletManager() {
             <span>{success}</span>
             {sellTxHash && (
               <a
-                href={`https://solscan.io/tx/${sellTxHash}${network === 'devnet' ? '?cluster=devnet' : ''}`}
+                href={chainExplorerUrl('tx', sellTxHash)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block text-xs text-blue-300 hover:underline mt-1"
               >
-                View sell transaction on Solscan
+                View sell transaction on Explorer
               </a>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Empty state: wallets exist but none on current chain */}
+      {chainWallets.length === 0 && wallets.length > 0 && (
+        <div className="bg-slate-900 rounded-xl p-8 border border-slate-800 text-center">
+          <Wallet className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+          <p className="text-slate-400">No {chainConfig.name} wallets yet</p>
+          <p className="text-slate-500 text-sm mb-4">Create a {chainConfig.name} treasury wallet to get started.</p>
+          <button
+            onClick={() => {
+              setNewWalletName('Treasury');
+              setShowAddWalletModal(true);
+            }}
+            className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-lg font-medium"
+          >
+            Create {chainConfig.name} Treasury
+          </button>
         </div>
       )}
 
@@ -1672,7 +1906,7 @@ export function TreasuryWalletManager() {
           <div className="grid grid-cols-2 gap-4 mb-4">
             <div className="bg-slate-800/50 rounded-lg p-4">
               <p className="text-slate-400 text-sm mb-1">Balance</p>
-              <p className="text-2xl font-bold text-white">{treasuryWallet.balance.toFixed(4)} SOL</p>
+              <p className="text-2xl font-bold text-white">{treasuryWallet.balance.toFixed(4)} {nativeToken}</p>
             </div>
             <div className="bg-slate-800/50 rounded-lg p-4">
               <p className="text-slate-400 text-sm mb-1">Address</p>
@@ -1706,12 +1940,12 @@ export function TreasuryWalletManager() {
                 Export Key
               </button>
               <a
-                href={`https://solscan.io/account/${treasuryWallet.address}${network === 'devnet' ? '?cluster=devnet' : ''}`}
+                href={chainExplorerUrl('address', treasuryWallet.address)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm"
               >
-                Solscan <ExternalLink className="w-3 h-3" />
+                Explorer <ExternalLink className="w-3 h-3" />
               </a>
             </div>
 
@@ -1723,7 +1957,7 @@ export function TreasuryWalletManager() {
               <p className="text-xs text-slate-400 mb-3">Bulk Operations ({subWallets.length} sub-wallets)</p>
               {/* Fund amount per wallet */}
               <div className="flex items-center gap-2 mb-3">
-                <label className="text-xs text-slate-400 whitespace-nowrap">SOL per wallet:</label>
+                <label className="text-xs text-slate-400 whitespace-nowrap">{nativeToken} per wallet:</label>
                 <input
                   type="number"
                   value={bulkFundAmount}
@@ -1733,7 +1967,7 @@ export function TreasuryWalletManager() {
                   className="w-28 px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-emerald-500"
                 />
                 <span className="text-xs text-slate-500">
-                  Total: {((parseFloat(bulkFundAmount) || 0) * (selectedWalletIds.length > 0 ? selectedWalletIds.length : subWallets.length)).toFixed(4)} SOL
+                  Total: {((parseFloat(bulkFundAmount) || 0) * (selectedWalletIds.length > 0 ? selectedWalletIds.length : subWallets.length)).toFixed(4)} {nativeToken}
                 </span>
               </div>
               <div className="flex gap-2">
@@ -1794,9 +2028,9 @@ export function TreasuryWalletManager() {
               )}
               <p className="text-xs text-slate-500 mt-2">
                 {selectedWalletIds.length > 0
-                  ? `Targeting ${selectedWalletIds.length} selected wallet${selectedWalletIds.length === 1 ? '' : 's'} • Fund: ${bulkFundAmount} SOL each`
-                  : `Targeting all ${subWallets.length} sub-wallets • Fund: ${bulkFundAmount} SOL each`}
-                {' • '}Sweep: leaves {RENT_RESERVE} SOL rent reserve
+                  ? `Targeting ${selectedWalletIds.length} selected wallet${selectedWalletIds.length === 1 ? '' : 's'} • Fund: ${bulkFundAmount} ${nativeToken} each`
+                  : `Targeting all ${subWallets.length} sub-wallets • Fund: ${bulkFundAmount} ${nativeToken} each`}
+                {' • '}Sweep: leaves {RENT_RESERVE} {nativeToken} rent reserve
               </p>
             </div>
           )}
@@ -1915,7 +2149,7 @@ export function TreasuryWalletManager() {
                     <button
                       onClick={() => handleDeleteWallet(wallet.id)}
                       className="text-slate-500 hover:text-red-400 p-1"
-                      title="Delete wallet (sweeps SOL to treasury)"
+                      title={`Delete wallet (sweeps ${nativeToken} to treasury)`}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -1925,7 +2159,7 @@ export function TreasuryWalletManager() {
                 <div className="space-y-2 mb-3">
                   <div className="flex justify-between">
                     <span className="text-slate-500 text-sm">Balance</span>
-                    <span className="font-mono">{wallet.balance.toFixed(4)} SOL</span>
+                    <span className="font-mono">{wallet.balance.toFixed(4)} {nativeToken}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <code className="text-xs text-slate-400 truncate flex-1">
@@ -2028,7 +2262,7 @@ export function TreasuryWalletManager() {
                             <span className="text-slate-300 font-medium">{w.name}</span>
                             <div className="flex items-center gap-3">
                               <span className="text-slate-500 font-mono">{w.address.slice(0, 6)}...{w.address.slice(-4)}</span>
-                              <span className="text-emerald-400 font-medium">{(w.balance || 0).toFixed(4)} SOL</span>
+                              <span className="text-emerald-400 font-medium">{(w.balance || 0).toFixed(4)} {nativeToken}</span>
                               {isExpanded
                                 ? <ChevronUp className="w-3 h-3 text-slate-400" />
                                 : <ChevronDown className="w-3 h-3 text-slate-400" />}
@@ -2050,7 +2284,7 @@ export function TreasuryWalletManager() {
                                 className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 disabled:opacity-50 rounded text-xs font-medium transition-colors"
                               >
                                 {busy === 'sweep' ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowUp className="w-3 h-3" />}
-                                Sweep SOL
+                                Sweep {nativeToken}
                               </button>
                               <button
                                 onClick={() => {
@@ -2190,7 +2424,7 @@ export function TreasuryWalletManager() {
           <div className="space-y-4">
             <div className="p-3 bg-slate-800 rounded-lg">
               <p className="text-sm text-slate-400">From: Treasury</p>
-              <p className="font-mono text-sm">{treasuryWallet?.balance.toFixed(4)} SOL available</p>
+              <p className="font-mono text-sm">{treasuryWallet?.balance.toFixed(4)} {nativeToken} available</p>
             </div>
             <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
               <p className="text-sm text-slate-400">To:</p>
@@ -2198,7 +2432,7 @@ export function TreasuryWalletManager() {
               <p className="font-mono text-xs text-slate-500">{wallets.find(w => w.id === fundTarget)?.address.slice(0, 20)}...</p>
             </div>
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Amount (SOL)</label>
+              <label className="block text-sm text-slate-400 mb-1">Amount ({nativeToken})</label>
               <input
                 type="number"
                 value={fundAmount}
@@ -2217,12 +2451,12 @@ export function TreasuryWalletManager() {
                   <p className="text-sm text-emerald-400">Transfer sent!</p>
                 </div>
                 <a
-                  href={`https://solscan.io/tx/${fundTxHash}${network === 'devnet' ? '?cluster=devnet' : ''}`}
+                  href={chainExplorerUrl('tx', fundTxHash)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs text-blue-400 hover:underline"
                 >
-                  View on Solscan →
+                  View on Explorer →
                 </a>
               </div>
             )}
@@ -2254,7 +2488,7 @@ export function TreasuryWalletManager() {
                   ) : (
                     <>
                       <ArrowDown className="w-4 h-4" />
-                      Send {fundAmount} SOL
+                      Send {fundAmount} {nativeToken}
                     </>
                   )}
                 </button>
@@ -2445,7 +2679,7 @@ export function TreasuryWalletManager() {
                         tx.type === 'send' ? 'text-red-400' : 'text-slate-400'
                       }`}>
                         {tx.type === 'receive' ? '+' : tx.type === 'send' ? '-' : ''}
-                        {tx.amount.toFixed(6)} SOL
+                        {tx.amount.toFixed(6)} {nativeToken}
                       </span>
                     </div>
                     <span className="text-xs text-slate-500">
@@ -2472,7 +2706,7 @@ export function TreasuryWalletManager() {
                       )}
                     </div>
                     <a
-                      href={`https://solscan.io/tx/${tx.signature}${network === 'devnet' ? '?cluster=devnet' : ''}`}
+                      href={chainExplorerUrl('tx', tx.signature)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center gap-1 text-blue-400 hover:text-blue-300"

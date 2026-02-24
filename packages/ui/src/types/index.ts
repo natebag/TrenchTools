@@ -1,3 +1,5 @@
+import type { ChainId } from '@trenchtools/core';
+
 export interface Wallet {
   id: string;
   address: string;
@@ -7,6 +9,8 @@ export interface Wallet {
   type: 'sniper' | 'treasury' | 'burner';
   privateKey?: string;
   derivationPath?: string;
+  /** Chain this wallet belongs to. Defaults to 'solana' when absent (backward compat). */
+  chain?: ChainId;
 }
 
 export interface SniperConfig {

@@ -32,8 +32,8 @@ export interface UseSecureWalletReturn {
   // Actions
   unlock: (password: string) => Promise<void>;
   lock: () => void;
-  generateWallet: (name: string, type: 'sniper' | 'treasury' | 'burner', password: string) => Promise<SecureWallet>;
-  generateWallets: (count: number, prefix: string, type: 'sniper' | 'treasury' | 'burner', password: string) => Promise<SecureWallet[]>;
+  generateWallet: (name: string, type: 'sniper' | 'treasury' | 'burner', password: string, chain?: string) => Promise<SecureWallet>;
+  generateWallets: (count: number, prefix: string, type: 'sniper' | 'treasury' | 'burner', password: string, chain?: string) => Promise<SecureWallet[]>;
   importWallet: (secretKey: Uint8Array, name: string, type: 'sniper' | 'treasury' | 'burner', password: string) => Promise<SecureWallet>;
   removeWallet: (walletId: string, password: string) => Promise<void>;
   removeWallets: (walletIds: string[], password: string) => Promise<number>;
@@ -102,7 +102,7 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
     return () => window.removeEventListener(SECURE_WALLET_STATE_EVENT, handleStateChanged);
   }, [syncStateFromManager]);
 
-  // Fetch balances for all wallets
+  // Fetch balances for all wallets (chain-aware)
   const refreshBalances = useCallback(async () => {
     console.log('[TrenchSniper] Refreshing balances, RPC:', rpcUrl);
 
@@ -117,23 +117,37 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
       // Fetch balances async and update
       Promise.all(
         currentWallets.map(async (wallet) => {
+          const walletChain = wallet.chain || 'solana';
           try {
-            console.log('[TrenchSniper] Fetching balance for:', wallet.address);
-            const pubkey = new PublicKey(wallet.address);
-            const conn = new Connection(rpcUrl, 'confirmed');
-            const balance = await conn.getBalance(pubkey);
-            console.log('[TrenchSniper] Got balance:', balance / LAMPORTS_PER_SOL, 'SOL');
-            return {
-              ...wallet,
-              balance: balance / LAMPORTS_PER_SOL,
-            };
+            if (walletChain === 'solana') {
+              const pubkey = new PublicKey(wallet.address);
+              const conn = new Connection(rpcUrl, 'confirmed');
+              const balance = await conn.getBalance(pubkey);
+              return { ...wallet, balance: balance / LAMPORTS_PER_SOL };
+            } else if (walletChain === 'sui') {
+              const { getChainConfig } = await import('@trenchtools/core');
+              const cfg = getChainConfig('sui');
+              const suiRpc = localStorage.getItem('trench_rpc_sui') || cfg.defaultRpcUrl;
+              const suiMod = await import('@mysten/sui/jsonRpc');
+              const client = new suiMod.SuiJsonRpcClient({ url: suiRpc, network: 'mainnet' });
+              const bal = await client.getBalance({ owner: wallet.address });
+              return { ...wallet, balance: Number(bal.totalBalance) / 1e9 };
+            } else {
+              // EVM chains (bsc, base, polygon)
+              const { getChainConfig } = await import('@trenchtools/core');
+              const cfg = getChainConfig(walletChain);
+              const evmRpc = localStorage.getItem(`trench_rpc_${walletChain}`) || cfg.defaultRpcUrl;
+              const { createPublicClient, http, formatEther } = await import('viem');
+              const client = createPublicClient({ transport: http(evmRpc) });
+              const balance = await client.getBalance({ address: wallet.address as `0x${string}` });
+              return { ...wallet, balance: parseFloat(formatEther(balance)) };
+            }
           } catch (err) {
-            console.error('[TrenchSniper] Balance fetch error:', err);
+            console.error('[TrenchSniper] Balance fetch error:', walletChain, wallet.address, err);
             return wallet;
           }
         })
       ).then(updatedWallets => {
-        console.log('[TrenchSniper] Setting updated wallets');
         setWallets(updatedWallets);
       });
 
@@ -167,7 +181,8 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
           address: w.address,
           balance: w.balance || 0,
           name: w.name,
-          type: w.type
+          type: w.type,
+          chain: w.chain || 'solana',
         }))
       ));
       // Sync to WalletContext's localStorage key so Sniper/Treasury pages can find wallets
@@ -180,6 +195,7 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
           balance: w.balance || 0,
           encrypted: true,
           type: w.type || 'sniper',
+          chain: w.chain || 'solana',
         })),
         updatedAt: Date.now(),
       }));
@@ -223,13 +239,14 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
   const generateWallet = useCallback(async (
     name: string,
     type: 'sniper' | 'treasury' | 'burner',
-    password: string
+    password: string,
+    chain?: string
   ): Promise<SecureWallet> => {
     setIsLoading(true);
     setError(null);
 
     try {
-      const wallet = await manager.generateWallet(name, type, password);
+      const wallet = await manager.generateWallet(name, type, password, chain);
       const secureWallet = wallet as SecureWallet;
       setWallets(prev => [...prev, secureWallet]);
       setHasVault(true);
@@ -249,13 +266,14 @@ export function useSecureWallet(options: UseSecureWalletOptions = {}): UseSecure
     count: number,
     prefix: string,
     type: 'sniper' | 'treasury' | 'burner',
-    password: string
+    password: string,
+    chain?: string
   ): Promise<SecureWallet[]> => {
     setIsLoading(true);
     setError(null);
 
     try {
-      const newWallets = await manager.generateWallets(count, prefix, type, password);
+      const newWallets = await manager.generateWallets(count, prefix, type, password, chain);
       const secureWallets = newWallets as SecureWallet[];
       setWallets(prev => [...prev, ...secureWallets]);
       setHasVault(true);

@@ -12,6 +12,7 @@ import {
   BrowserDecryptionError,
   isBrowserCryptoAvailable,
 } from '@trenchtools/core';
+import type { ChainId } from '@trenchtools/core';
 import type { Wallet } from '@/types';
 
 // ============ Types ============
@@ -138,20 +139,33 @@ export class BrowserWalletManager {
     name: string,
     type: 'sniper' | 'treasury' | 'burner',
     password: string,
-    chain?: string
+    chain?: string | ChainId
   ): Promise<Wallet> {
     let walletData: BrowserWalletData;
 
-    if (chain === 'sui') {
-      const { generateSuiWallet } = await import('@trenchtools/core');
-      const wallet = generateSuiWallet();
-      // SUI wallets: publicKey is the 0x-prefixed address, secretKey is the raw 32-byte Ed25519 key
+    const EVM_CHAINS = ['bsc', 'base', 'polygon'];
+
+    if (chain && EVM_CHAINS.includes(chain)) {
+      const { generateEvmWallet } = await import('@trenchtools/core');
+      const wallet = generateEvmWallet();
       walletData = {
         publicKey: wallet.address,
         secretKey: Array.from(wallet.privateKey),
         createdAt: Date.now(),
         name,
         type,
+        chain: chain as ChainId,
+      };
+    } else if (chain === 'sui') {
+      const { generateSuiWallet } = await import('@trenchtools/core');
+      const wallet = generateSuiWallet();
+      walletData = {
+        publicKey: wallet.address,
+        secretKey: Array.from(wallet.privateKey),
+        createdAt: Date.now(),
+        name,
+        type,
+        chain: chain as ChainId,
       };
     } else {
       // Default: Solana
@@ -162,6 +176,7 @@ export class BrowserWalletManager {
         createdAt: Date.now(),
         name,
         type,
+        chain: (chain as ChainId) || 'solana',
       };
     }
 
@@ -196,14 +211,27 @@ export class BrowserWalletManager {
     namePrefix: string,
     type: 'sniper' | 'treasury' | 'burner',
     password: string,
-    chain?: string
+    chain?: string | ChainId
   ): Promise<Wallet[]> {
     const newWallets: BrowserWalletData[] = [];
 
     for (let i = 0; i < count; i++) {
       const walletName = `${namePrefix}${namePrefix.endsWith('-') || namePrefix.endsWith(' ') ? '' : ' '}${i + 1}`;
 
-      if (chain === 'sui') {
+      const EVM_CHAINS = ['bsc', 'base', 'polygon'];
+
+      if (chain && EVM_CHAINS.includes(chain)) {
+        const { generateEvmWallet } = await import('@trenchtools/core');
+        const wallet = generateEvmWallet();
+        newWallets.push({
+          publicKey: wallet.address,
+          secretKey: Array.from(wallet.privateKey),
+          createdAt: Date.now(),
+          name: walletName,
+          type,
+          chain: chain as ChainId,
+        });
+      } else if (chain === 'sui') {
         const { generateSuiWallet } = await import('@trenchtools/core');
         const wallet = generateSuiWallet();
         newWallets.push({
@@ -212,6 +240,7 @@ export class BrowserWalletManager {
           createdAt: Date.now(),
           name: walletName,
           type,
+          chain: chain as ChainId,
         });
       } else {
         const keypair = Keypair.generate();
@@ -221,6 +250,7 @@ export class BrowserWalletManager {
           createdAt: Date.now(),
           name: walletName,
           type,
+          chain: (chain as ChainId) || 'solana',
         });
       }
     }
@@ -242,11 +272,9 @@ export class BrowserWalletManager {
     const allWallets = [...existingWallets, ...newWallets];
     await this.vault.save(allWallets, password);
 
-    // Convert and store keypairs
+    // Convert and store keypairs (Solana only — others handled in dataToWallet)
     return newWallets.map(w => {
       const wallet = this.dataToWallet(w, type);
-      const keypair = Keypair.fromSecretKey(new Uint8Array(w.secretKey));
-      this.keypairs.set(wallet.id, keypair);
       return wallet;
     });
   }
@@ -400,6 +428,18 @@ export class BrowserWalletManager {
     await this.vault.changePassword(oldPassword, newPassword);
   }
 
+  // ============ Raw Data Access ============
+
+  /**
+   * Get raw wallet data for non-Solana signing (EVM, SUI).
+   * Returns the BrowserWalletData including secretKey bytes.
+   */
+  getRawWalletData(walletId: string): BrowserWalletData | undefined {
+    const unlocked = this.vault.getUnlockedWallets();
+    if (!unlocked) return undefined;
+    return unlocked.find(w => `wallet_${w.publicKey.slice(0, 8)}` === walletId);
+  }
+
   // ============ Helpers ============
 
   /**
@@ -412,17 +452,18 @@ export class BrowserWalletManager {
     // Use type from stored data, fallback for backward compatibility
     const type = data.type || fallbackType;
     const id = `wallet_${data.publicKey.slice(0, 8)}`;
+    const chain = data.chain || 'solana';
 
-    // Reconstruct Solana keypair and store (only for 64-byte Solana secret keys).
-    // SUI wallets have 32-byte keys; EVM wallets also differ. Non-Solana keys
-    // are stored in the vault and retrieved via getUnlockedWallets() when needed.
-    const keyBytes = new Uint8Array(data.secretKey);
-    if (keyBytes.length === 64) {
-      try {
-        const keypair = Keypair.fromSecretKey(keyBytes);
-        this.keypairs.set(id, keypair);
-      } catch {
-        // Not a valid Solana keypair — skip (e.g., EVM or SUI wallet)
+    // Only reconstruct Solana keypairs (64-byte keys, solana chain)
+    if (chain === 'solana') {
+      const keyBytes = new Uint8Array(data.secretKey);
+      if (keyBytes.length === 64) {
+        try {
+          const keypair = Keypair.fromSecretKey(keyBytes);
+          this.keypairs.set(id, keypair);
+        } catch {
+          // Not a valid Solana keypair — skip
+        }
       }
     }
 
@@ -433,6 +474,7 @@ export class BrowserWalletManager {
       balance: 0,  // Will be fetched separately
       encrypted: true,
       type,
+      chain,
     };
   }
 }
