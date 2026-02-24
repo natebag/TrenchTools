@@ -52,6 +52,9 @@ keys/
 *.tmp
 .cache/
 
+# Claude Code settings (may contain credentials in permission rules)
+.claude/
+
 # Misc
 .wallets/
 .tokens/
