@@ -8,7 +8,10 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   target: 'node20',
-  banner: { js: '#!/usr/bin/env node' },
+  banner: {
+    // Shebang for CLI + createRequire shim so bundled CJS deps can require() Node builtins
+    js: `#!/usr/bin/env node\nimport{createRequire}from'module';const require=createRequire(import.meta.url);`,
+  },
   // Bundle @trenchtools/core into the output so we only publish one package
   noExternal: ['@trenchtools/core'],
 });
